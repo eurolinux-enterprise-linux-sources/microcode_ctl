@@ -1,9 +1,9 @@
-%define intel_ucode_version 20190514a
+%define intel_ucode_version 20190618
 
 Summary:        Tool to update x86/x86-64 CPU microcode.
 Name:           microcode_ctl
 Version:        1.17
-Release:        33.13%{?dist}
+Release:        33.14%{?dist}
 Epoch:          2
 Group:          System Environment/Base
 License:        GPLv2+
@@ -120,6 +120,9 @@ rm -rf %{buildroot}
 exit 0
 
 %changelog
+* Wed Jun 19 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:1.17-33.14
+- Intel CPU microcode update to 20190618 (#1717238).
+
 * Sun Jun 02 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:1.17-33.13
 - Remove disclaimer, as it is not as important now to justify kmsg/log
   pollution; its contents are partially adopted in README.caveats.

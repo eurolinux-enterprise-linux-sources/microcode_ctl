@@ -1,5 +1,5 @@
 %define upstream_version 2.1-18
-%define intel_ucode_version 20190514a
+%define intel_ucode_version 20190618
 %define intel_ucode_file_id 28727
 %define microcode_ctl_libexec %{_libexecdir}/microcode_ctl
 %define update_ucode %{microcode_ctl_libexec}/update_ucode
@@ -11,7 +11,7 @@
 Summary:        Tool to transform and deploy CPU microcode update for x86.
 Name:           microcode_ctl
 Version:        2.1
-Release:        47.4%{?dist}
+Release:        47.5%{?dist}
 Epoch:          2
 Group:          System Environment/Base
 License:        GPLv2+ and Redistributable, no modification permitted
@@ -187,47 +187,50 @@ if [ -d /run/systemd/system -a -e "/boot/symvers-$(uname -r).gz" ]; then
 	dracut -f
 fi
 
+%global rpm_state_dir %{_localstatedir}/lib/rpm-state
+
+
 %preun
 %systemd_preun microcode.service
 
 # Storing ucode list before uninstall
 ls /usr/share/microcode_ctl/intel-ucode |
-	sort > "%{_localstatedir}/lib/rpm-state/microcode_ctl_un_intel-ucode"
+	sort > "%{rpm_state_dir}/microcode_ctl_un_intel-ucode"
 ls /usr/share/microcode_ctl/ucode_with_caveats |
-	sort > "%{_localstatedir}/lib/rpm-state/microcode_ctl_un_ucode_caveats"
+	sort > "%{rpm_state_dir}/microcode_ctl_un_ucode_caveats"
 %{update_ucode} --action list --skip-common |
-	sort > "%{_localstatedir}/lib/rpm-state/microcode_ctl_un_file_list"
+	sort > "%{rpm_state_dir}/microcode_ctl_un_file_list"
 
 %postun
 %systemd_postun microcode.service
 
 ls /usr/share/microcode_ctl/intel-ucode 2> /dev/null |
-	sort > "%{_localstatedir}/lib/rpm-state/microcode_ctl_un_intel-ucode_after"
+	sort > "%{rpm_state_dir}/microcode_ctl_un_intel-ucode_after"
 comm -23 \
-	"%{_localstatedir}/lib/rpm-state/microcode_ctl_un_intel-ucode" \
-	"%{_localstatedir}/lib/rpm-state/microcode_ctl_un_intel-ucode_after" \
-	> "%{_localstatedir}/lib/rpm-state/microcode_ctl_un_intel-ucode_diff"
+	"%{rpm_state_dir}/microcode_ctl_un_intel-ucode" \
+	"%{rpm_state_dir}/microcode_ctl_un_intel-ucode_after" \
+	> "%{rpm_state_dir}/microcode_ctl_un_intel-ucode_diff"
 
 if [ -e "%{update_ucode}" ]; then
 	ls /usr/share/microcode_ctl/ucode_with_caveats 2> /dev/null |
-		sort > "%{_localstatedir}/lib/rpm-state/microcode_ctl_un_ucode_caveats_after"
+		sort > "%{rpm_state_dir}/microcode_ctl_un_ucode_caveats_after"
 
 	comm -23 \
-		"%{_localstatedir}/lib/rpm-state/microcode_ctl_un_ucode_caveats" \
-		"%{_localstatedir}/lib/rpm-state/microcode_ctl_un_ucode_caveats_after" \
-		> "%{_localstatedir}/lib/rpm-state/microcode_ctl_un_ucode_caveats_diff"
+		"%{rpm_state_dir}/microcode_ctl_un_ucode_caveats" \
+		"%{rpm_state_dir}/microcode_ctl_un_ucode_caveats_after" \
+		> "%{rpm_state_dir}/microcode_ctl_un_ucode_caveats_diff"
 
 	%{update_ucode} --action remove --cleanup \
-		"%{_localstatedir}/lib/rpm-state/microcode_ctl_un_intel-ucode_diff" \
-		"%{_localstatedir}/lib/rpm-state/microcode_ctl_un_ucode_caveats_diff" || exit 0
+		"%{rpm_state_dir}/microcode_ctl_un_intel-ucode_diff" \
+		"%{rpm_state_dir}/microcode_ctl_un_ucode_caveats_diff" || exit 0
 
-	rm -f "%{_localstatedir}/lib/rpm-state/microcode_ctl_un_ucode_caveats_after"
-	rm -f "%{_localstatedir}/lib/rpm-state/microcode_ctl_un_ucode_caveats_diff"
+	rm -f "%{rpm_state_dir}/microcode_ctl_un_ucode_caveats_after"
+	rm -f "%{rpm_state_dir}/microcode_ctl_un_ucode_caveats_diff"
 else
 	while read -r f; do
 		[ -L "/lib/firmware/intel-ucode/$f" ] || continue
 		rm -f "/lib/firmware/intel-ucode/$f"
-	done < "%{_localstatedir}/lib/rpm-state/microcode_ctl_un_intel-ucode_diff"
+	done < "%{rpm_state_dir}/microcode_ctl_un_intel-ucode_diff"
 
 	rmdir "/lib/firmware/intel-ucode" 2>/dev/null || :
 
@@ -238,16 +241,16 @@ else
 			rm -f "$f"
 			rmdir -p $(dirname "$f") 2>/dev/null || :
 		fi
-	done < "%{_localstatedir}/lib/rpm-state/microcode_ctl_un_file_list"
+	done < "%{rpm_state_dir}/microcode_ctl_un_file_list"
 fi
 
-rm -f "%{_localstatedir}/lib/rpm-state/microcode_ctl_un_intel-ucode"
-rm -f "%{_localstatedir}/lib/rpm-state/microcode_ctl_un_intel-ucode_after"
-rm -f "%{_localstatedir}/lib/rpm-state/microcode_ctl_un_intel-ucode_diff"
+rm -f "%{rpm_state_dir}/microcode_ctl_un_intel-ucode"
+rm -f "%{rpm_state_dir}/microcode_ctl_un_intel-ucode_after"
+rm -f "%{rpm_state_dir}/microcode_ctl_un_intel-ucode_diff"
 
-rm -f "%{_localstatedir}/lib/rpm-state/microcode_ctl_un_ucode_caveats"
+rm -f "%{rpm_state_dir}/microcode_ctl_un_ucode_caveats"
 
-rm -f "%{_localstatedir}/lib/rpm-state/microcode_ctl_un_file_list"
+rm -f "%{rpm_state_dir}/microcode_ctl_un_file_list"
 
 
 exit 0
@@ -275,6 +278,10 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Wed Jun 19 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:2.1-47.5
+- Intel CPU microcode update to 20190618.
+- Resolves: #1722575.
+
 * Sun Jun 02 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:2.1-47.4
 - Remove disclaimer, as it is not as important now to justify kmsg/log
   pollution; its contents are partially adopted in README.caveats.

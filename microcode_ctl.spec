@@ -1,9 +1,9 @@
-%define intel_ucode_version 20191112
+%define intel_ucode_version 20191115
 
 Summary:        Tool to update x86/x86-64 CPU microcode.
 Name:           microcode_ctl
 Version:        1.17
-Release:        33.19%{?dist}
+Release:        33.23%{?dist}
 Epoch:          2
 Group:          System Environment/Base
 License:        GPLv2+
@@ -13,7 +13,7 @@ Source1:        microcode_ctl.rules
 # Microcode is now distributed directly by Intel, at
 # https://github.com/intel/Intel-Linux-Processor-Microcode-Data-Files/
 # (as referenced in https://downloadmirror.intel.com/28727/eng/Intel-Linux_Processor_Microcode_readme.txt )
-Source2:        microcode-%{intel_ucode_version}.pre.tar.gz
+Source2:        https://github.com/intel/Intel-Linux-Processor-Microcode-Data-Files/archive/microcode-%{intel_ucode_version}.tar.gz
 # http://www.amd64.org/support/microcode.html
 Source3:        amd-ucode-2018-05-24.tar
 Source5:        intel_ucode2microcode
@@ -35,6 +35,12 @@ Source10:       README.caveats
 Source11:       https://github.com/intel/Intel-Linux-Processor-Microcode-Data-Files/raw/microcode-20190514/intel-ucode/06-2d-07
 Source12:       06-2d-07_config
 Source13:       06-2d-07_readme
+
+# SKL-SP/W/X (CPUID 0x50654) post-20191112 hangs
+# https://github.com/intel/Intel-Linux-Processor-Microcode-Data-Files/issues/21
+Source14:       https://github.com/intel/Intel-Linux-Processor-Microcode-Data-Files/raw/microcode-20190918/intel-ucode/06-55-04
+Source15:       06-55-04_config
+Source16:       06-55-04_readme
 
 Buildroot:      %{_tmppath}/%{name}-%{version}-root
 Requires(pre):  /sbin/chkconfig /sbin/service
@@ -71,9 +77,13 @@ make CFLAGS="$RPM_OPT_FLAGS" %{?_smp_mflags}
 mv intel-ucode/06-2d-07 intel-ucode-with-caveats
 cp "%{SOURCE11}" intel-ucode/
 
+mv intel-ucode/06-55-04 intel-ucode-with-caveats
+cp "%{SOURCE14}" intel-ucode/
+
 bash -efu %{SOURCE5} "intel-ucode" microcode.dat
 bash -efu %{SOURCE5} "intel-ucode-with-caveats/06-4f-01" microcode-06-4f-01.dat
 bash -efu %{SOURCE5} "intel-ucode-with-caveats/06-2d-07" microcode-06-2d-07.dat
+bash -efu %{SOURCE5} "intel-ucode-with-caveats/06-55-04" microcode-06-55-04.dat
 
 %install
 rm -rf %{buildroot}
@@ -86,6 +96,7 @@ mkdir -p %{buildroot}/usr/share/doc/microcode_ctl/
 mkdir -p %{buildroot}/usr/libexec/microcode_ctl/
 mkdir -p %{buildroot}/usr/share/microcode_ctl/ucode_with_caveats/intel-06-4f-01
 mkdir -p %{buildroot}/usr/share/microcode_ctl/ucode_with_caveats/intel-06-2d-07
+mkdir -p %{buildroot}/usr/share/microcode_ctl/ucode_with_caveats/intel-06-55-04
 
 make DESTDIR=%{buildroot} PREFIX=%{_prefix} \
      INSDIR=/sbin MANDIR=%{_mandir}/man8 RCDIR=%{_sysconfdir} install clean
@@ -96,6 +107,7 @@ install -m 644 %{SOURCE1} %{buildroot}/lib/udev/rules.d/89-microcode.rules
 install -m 644 microcode.dat %{buildroot}/lib/firmware/microcode.dat
 install -m 644 microcode-06-4f-01.dat %{buildroot}/lib/firmware/microcode-06-4f-01.dat
 install -m 644 microcode-06-2d-07.dat %{buildroot}/lib/firmware/microcode-06-2d-07.dat
+install -m 644 microcode-06-55-04.dat %{buildroot}/lib/firmware/microcode-06-55-04.dat
 install -m 644 %{SOURCE10} README.caveats
 
 # Provide Intel microcode license, as it requires
@@ -110,6 +122,9 @@ install -m 644 %{SOURCE9} %{buildroot}/usr/share/microcode_ctl/ucode_with_caveat
 
 install -m 644 %{SOURCE12} %{buildroot}/usr/share/microcode_ctl/ucode_with_caveats/intel-06-2d-07/config
 install -m 644 %{SOURCE13} %{buildroot}/usr/share/microcode_ctl/ucode_with_caveats/intel-06-2d-07/readme
+
+install -m 644 %{SOURCE15} %{buildroot}/usr/share/microcode_ctl/ucode_with_caveats/intel-06-55-04/config
+install -m 644 %{SOURCE16} %{buildroot}/usr/share/microcode_ctl/ucode_with_caveats/intel-06-55-04/readme
 
 install -m 644 amd-ucode-2018-05-24/LICENSE.amd-ucode LICENSE.amd-ucode
 install -m 644 amd-ucode-2018-05-24/microcode_amd.bin %{buildroot}/lib/firmware/amd-ucode/microcode_amd.bin
@@ -144,6 +159,50 @@ rm -rf %{buildroot}
 exit 0
 
 %changelog
+* Wed Nov 20 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:1.17-33.23
+- Do not update 06-55-04 (SKL-SP/W/X) to revision 0x2000065, use 0x2000064
+  by default (#1774635).
+
+* Sat Nov 16 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:1.17-33.22
+- Update Intel CPU microcode to microcode-20191115 release:
+  - Update of 06-4e-03/0xc0 (SKL-U/Y D0) from revision 0xd4 up to 0xd6;
+  - Update of 06-5e-03/0x36 (SKL-H/S/Xeon E3 R0/N0) from revision 0xd4
+    up to 0xd6;
+  - Update of 06-8e-09/0x10 (AML-Y 2+2 H0) from revision 0xc6 up to 0xca;
+  - Update of 06-8e-09/0xc0 (KBL-U/Y H0) from revision 0xc6 up to 0xca;
+  - Update of 06-8e-0a/0xc0 (CFL-U 4+3e D0) from revision 0xc6 up to 0xca;
+  - Update of 06-8e-0b/0xd0 (WHL-U W0) from revision 0xc6 up to 0xca;
+  - Update of 06-8e-0c/0x94 (AML-Y V0, CML-U 4+2 V0, WHL-U V0) from revision
+    0xc6 up to 0xca;
+  - Update of 06-9e-09/0x2a (KBL-G/X H0, KBL-H/S/Xeon E3 B0) from revision 0xc6
+    up to 0xca;
+  - Update of 06-9e-0a/0x22 (CFL-H/S/Xeon E U0) from revision 0xc6 up to 0xca;
+  - Update of 06-9e-0b/0x02 (CFL-S B0) from revision 0xc6 up to 0xca;
+  - Update of 06-9e-0c/0x22 (CFL-S/Xeon E P0) from revision 0xc6 up to 0xca;
+  - Update of 06-9e-0d/0x22 (CFL-H/S R0) from revision 0xc6 up to 0xca;
+  - Update of 06-a6-00/0x80 (CML-U 6+2 A0) from revision 0xc6 up to 0xca.
+
+* Fri Nov 15 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:1.17-33.21
+- Update Intel CPU microcode to microcode-20191113 release:
+  - Update of 06-9e-0c (CFL-H/S P0) microcode from revision 0xae up to 0xc6.
+- Drop 0001-releasenote-changes-summary-fixes.patch.
+
+* Tue Nov 12 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:1.17-33.20
+- Package the publicy available microcode-20191112 release (#1755021):
+  - Addition of 06-4d-08/0x1 (AVN B0/C0) microcode at revision 0x12d;
+  - Addition of 06-55-06/0xbf (CSL-SP B0) microcode at revision 0x400002c;
+  - Addition of 06-7a-08/0x1 (GLK R0) microcode at revision 0x16;
+  - Update of 06-55-03/0x97 (SKL-SP B1) microcode from revision 0x1000150
+    up to 0x1000151;
+  - Update of 06-55-04/0xb7 (SKL-SP H0/M0/U0, SKL-D M1) microcode from revision
+    0x2000064 up to 0x2000065;
+  - Update of 06-55-07/0xbf (CSL-SP B1) microcode from revision 0x500002b
+    up to 0x500002c;
+  - Update of 06-7a-01/0x1 (GLK B0) microcode from revision 0x2e up to 0x32;
+- Include 06-9e-0c (CFL-H/S P0) microcode from the microcode-20190918 release.
+- Correct the releasenote file (0001-releasenote-changes-summary-fixes.patch).
+- Update README.caveats with the link to the new Knowledge Base article.
+
 * Thu Nov 07 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:1.17-33.19
 - Fix the incorrect "Source2:" tag.
 

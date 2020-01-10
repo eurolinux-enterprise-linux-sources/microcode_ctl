@@ -322,6 +322,26 @@ Affected microcode: intel-ucode/06-2d-07.
 Mitigation: previously published microcode revision 0x714 is used by default.
 
 
+Intel Skylake-SP/W/X caveat
+---------------------------
+Microcode revision 0x2000065 for Intel Skylake Scalable Platform (SKL-SP/W/X,
+family 6, model 85, stepping 4) may lead to system instability.
+In order to address this, this microcode update is not used and the previous
+microcode revision is provided instead by default; the microcode file, however,
+is still shipped as part of microcode_ctl package and can be used for performing
+a microcode update if it is enforced via the aforementioned overrides.
+(See the sections "check_caveats script" and "reload_microcode script"
+for details.)
+
+Caveat name: intel-06-55-04
+
+Affected microcode: intel-ucode/06-55-04.
+
+Mitigation: previously published microcode revision 0x2000064 is used
+by default.
+
+
+
 Additional information
 ======================
 Red Hat provides updated microcode, developed by our microprocessor
@@ -330,8 +350,7 @@ to determine whether more recent BIOS/firmware updates are recommended
 because additional improvements may be available.
 
 Information regarding microcode revisions required for mitigating specific
-microarchitectural side-channel attacks is available in the following
-knowledge base articles:
+Intel CPU vulnerabilities is available in the following knowledge base articles:
  * CVE-2017-5715 ("Spectre"):
    https://access.redhat.com/articles/3436091
  * CVE-2018-3639 ("Speculative Store Bypass"):
@@ -341,3 +360,8 @@ knowledge base articles:
  * CVE-2018-12130, CVE-2018-12126, CVE-2018-12127, and CVE-2019-11091
    ("Microarchitectural Data Sampling"):
    https://access.redhat.com/articles/4138151
+ * CVE-2019-0117 (Intel SGX Information Leak),
+   CVE-2019-0123 (Intel SGX Privilege Escalation),
+   CVE-2019-11135 (TSX Asynchronous Abort),
+   CVE-2019-11139 (Voltage Setting Modulation):
+   https://access.redhat.com/solutions/2019-microcode-nov

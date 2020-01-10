@@ -1,0 +1,3 @@
+model GenuineIntel 06-55-04
+path intel-ucode/06-55-04
+disable early late

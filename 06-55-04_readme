@@ -1,0 +1,61 @@
+Intel Skulake Scalable Platform CPU models (SKL-SP/W/X, family 6, model 85,
+stepping 4) have reports of system hangs when revision 0x2000065 of microcode,
+that is included since microcode-20191112 update, is applied.  In order
+to address this, microcode update to this revision has been disabled,
+and the previously published microcode revision 0x2000064 is used by default
+for the OS-driven microcode update.
+
+For the reference, SHA1 checksums of 06-55-04 microcode files containing
+microcode revisions in question are listed below:
+ * 06-55-04, revision 0x2000064: 2e405644a145de0f55517b6a9de118eec8ec1e5a
+ * 06-55-04, revision 0x2000065: f27f12b9d53f492c297afd856cdbc596786fad23
+
+Please contact your system vendor for a BIOS/firmware update that contains
+the latest microcode version.  For the information regarding microcode versions
+required for mitigating specific side-channel cache attacks, please refer
+to the following knowledge base articles:
+ * CVE-2017-5715 ("Spectre"):
+   https://access.redhat.com/articles/3436091
+ * CVE-2018-3639 ("Speculative Store Bypass"):
+   https://access.redhat.com/articles/3540901
+ * CVE-2018-3620, CVE-2018-3646 ("L1 Terminal Fault Attack"):
+   https://access.redhat.com/articles/3562741
+ * CVE-2018-12130, CVE-2018-12126, CVE-2018-12127, and CVE-2019-11091
+   ("Microarchitectural Data Sampling"):
+   https://access.redhat.com/articles/4138151
+ * CVE-2019-0117 (Intel SGX Information Leak),
+   CVE-2019-0123 (Intel SGX Privilege Escalation),
+   CVE-2019-11135 (TSX Asynchronous Abort),
+   CVE-2019-11139 (Voltage Setting Modulation):
+   https://access.redhat.com/solutions/2019-microcode-nov
+
+The information regarding enforcing microcode update is provided below.
+
+To enforce usage of the 0x2000065 microcode revision for a specific kernel
+version, please create a file "force-intel-06-55-04" inside
+/lib/firmware/<kernel_version> directory, run
+"/usr/libexec/microcode_ctl/update_ucode" to add it to firmware directory
+where microcode will be available for late microcode update, and run
+"dracut -f --kver <kernel_version>", so initramfs for this kernel version
+is regenerated and the microcode can be loaded early, for example:
+
+    touch /lib/firmware/3.10.0-862.9.1/force-intel-06-55-04
+    /usr/libexec/microcode_ctl/update_ucode
+    dracut -f --kver 3.10.0-862.9.1
+
+After that, it is possible to perform a late microcode update by executing
+"/usr/libexec/microcode_ctl/reload_microcode" or by writing value "1" to
+"/sys/devices/system/cpu/microcode/reload" directly.
+
+To enforce addition of this microcode for all kernels, please create file
+"/etc/microcode_ctl/ucode_with_caveats/force-intel-06-55-04", run
+"/usr/libexec/microcode_ctl/update_ucode" for enabling late microcode updates,
+and "dracut -f --regenerate-all" for enabling early microcode updates:
+
+    mkdir -p /etc/microcode_ctl/ucode_with_caveats
+    touch /etc/microcode_ctl/ucode_with_caveats/force-intel-06-55-04
+    /usr/libexec/microcode_ctl/update_ucode
+    dracut -f --regenerate-all
+
+Please refer to /usr/share/doc/microcode_ctl/README.caveats for additional
+information.

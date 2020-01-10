@@ -1,9 +1,9 @@
-%define intel_ucode_version 20190918
+%define intel_ucode_version 20191112
 
 Summary:        Tool to update x86/x86-64 CPU microcode.
 Name:           microcode_ctl
 Version:        1.17
-Release:        33.17%{?dist}
+Release:        33.19%{?dist}
 Epoch:          2
 Group:          System Environment/Base
 License:        GPLv2+
@@ -13,7 +13,7 @@ Source1:        microcode_ctl.rules
 # Microcode is now distributed directly by Intel, at
 # https://github.com/intel/Intel-Linux-Processor-Microcode-Data-Files/
 # (as referenced in https://downloadmirror.intel.com/28727/eng/Intel-Linux_Processor_Microcode_readme.txt )
-Source2:        https://github.com/intel/Intel-Linux-Processor-Microcode-Data-Files/archive/microcode-%{intel_ucode_version}.tar.gz
+Source2:        microcode-%{intel_ucode_version}.pre.tar.gz
 # http://www.amd64.org/support/microcode.html
 Source3:        amd-ucode-2018-05-24.tar
 Source5:        intel_ucode2microcode
@@ -144,6 +144,36 @@ rm -rf %{buildroot}
 exit 0
 
 %changelog
+* Thu Nov 07 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:1.17-33.19
+- Fix the incorrect "Source2:" tag.
+
+* Thu Nov 07 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:1.17-33.18
+- Intel CPU microcode update to 20191112, addresses CVE-2017-5715,
+  CVE-2019-0117, CVE-2019-11135, CVE-2019-11139 (#1764049, #1764062, #1764953,
+  #1764961, #1764988, #1765393, #1765405, #1766440, #1766862):
+  - Addition of 06-a6-00/0x80 (CML-U 6+2 A0) microcode at revision 0xc6;
+  - Addition of 06-66-03/0x80 (CNL-U D0) microcode at revision 0x2a;
+  - Addition of 06-55-03/0x97 (SKL-SP B1) microcode at revision 0x1000150;
+  - Addition of 06-7e-05/0x80 (ICL-U/Y D1) microcode at revision 0x46;
+  - Update of 06-4e-03/0xc0 (SKL-U/Y D0) microcode from revision 0xcc to 0xd4;
+  - Update of 06-5e-03/0x36 (SKL-H/S/Xeon E3 R0/N0) microcode from revision 0xcc
+    to 0xd4
+  - Update of 06-8e-09/0x10 (AML-Y 2+2 H0) microcode from revision 0xb4 to 0xc6;
+  - Update of 06-8e-09/0xc0 (KBL-U/Y H0) microcode from revision 0xb4 to 0xc6;
+  - Update of 06-8e-0a/0xc0 (CFL-U 4+3e D0) microcode from revision 0xb4
+    to 0xc6;
+  - Update of 06-8e-0b/0xd0 (WHL-U W0) microcode from revision 0xb8 to 0xc6;
+  - Update of 06-8e-0c/0x94 (AML-Y V0) microcode from revision 0xb8 to 0xc6;
+  - Update of 06-8e-0c/0x94 (CML-U 4+2 V0) microcode from revision 0xb8 to 0xc6;
+  - Update of 06-8e-0c/0x94 (WHL-U V0) microcode from revision 0xb8 to 0xc6;
+  - Update of 06-9e-09/0x2a (KBL-G/X H0) microcode from revision 0xb4 to 0xc6;
+  - Update of 06-9e-09/0x2a (KBL-H/S/Xeon E3 B0) microcode from revision 0xb4
+    to 0xc6;
+  - Update of 06-9e-0a/0x22 (CFL-H/S/Xeon E U0) microcode from revision 0xb4
+    to 0xc6;
+  - Update of 06-9e-0b/0x02 (CFL-S B0) microcode from revision 0xb4 to 0xc6;
+  - Update of 06-9e-0d/0x22 (CFL-H R0) microcode from revision 0xb8 to 0xc6.
+
 * Sun Oct 06 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:1.17-33.17
 - Do not update 06-2d-07 (SNB-E/EN/EP) to revision 0x718, use 0x714
   by default (#1758382).

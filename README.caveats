@@ -307,6 +307,21 @@ series:
  - RHEL 6.4:  2.6.32-358.90.1
 
 
+Intel Sandy Bridge-E/EN/EP caveat
+---------------------------------
+MDS-related microcode revision 0x718 for Intel Sandy Bridge-E/EN/EP
+(SNB-EP, family 6, model 45, stepping 7) may lead to system instability.
+In order to address this, this microcode update is not used and the previous
+microcode revision is provided instead by default; the microcode file, however,
+is still shipped as part of microcode_ctl package and can be used for performing
+a microcode update if it is enforced via the aforementioned overriddes. (See
+sections "check_caveats script" and "reload_microcode script" for details.)
+
+Affected microcode: intel-ucode/06-2d-07.
+
+Mitigation: previously published microcode revision 0x714 is used by default.
+
+
 Additional information
 ======================
 Red Hat provides updated microcode, developed by our microprocessor

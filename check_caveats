@@ -155,18 +155,6 @@ get_vendor_id()
 	/bin/sed -rn '1,/^$/s/^vendor_id[[:space:]]*: (.*)$/\1/p' /proc/cpuinfo
 }
 
-get_mc_path()
-{
-	case "$1" in
-	GenuineIntel)
-		echo "intel-ucode/$2"
-		;;
-	AuthenticAMD)
-		echo "amd-ucode/$2"
-		;;
-	esac
-}
-
 get_mc_ver()
 {
 	/bin/sed -rn '1,/^$/s/^microcode[[:space:]]*: (.*)$/\1/p' /proc/cpuinfo
@@ -367,28 +355,6 @@ for cfg in $(echo "${configs}"); do
 			debug "Current CPU model '$cpu_model' doesn't" \
 			      "match configuration CPU model '$cfg_model'," \
 			      "skipping"
-			continue
-		}
-	fi
-
-	# Check paths if model filter is enabled
-	if [ 1 -eq "$match_model" -a  -n "$cfg_path" ]; then
-		cpu_mc_path="$MC_CAVEATS_DATA_DIR/$cfg/$(get_mc_path \
-			"$cpu_vendor" "${cpu_model#* }")"
-		cfg_mc_present=0
-
-		for p in $(printf "%s" "$cfg_path"); do
-			find "$MC_CAVEATS_DATA_DIR/$cfg" \
-				-path "$MC_CAVEATS_DATA_DIR/$cfg/$p" -print0 \
-			    | grep -zFxq "$cpu_mc_path" \
-			    || continue
-
-			cfg_mc_present=1
-		done
-
-		[ 1 = "$cfg_mc_present" ] || {
-			debug "No matching microcode files in '$cfg_path'" \
-			      "for CPU model '$cpu_model', skipping"
 			continue
 		}
 	fi

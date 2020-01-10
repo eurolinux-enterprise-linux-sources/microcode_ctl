@@ -1,9 +1,9 @@
-%define intel_ucode_version 20190618
+%define intel_ucode_version 20190918
 
 Summary:        Tool to update x86/x86-64 CPU microcode.
 Name:           microcode_ctl
 Version:        1.17
-Release:        33.14%{?dist}
+Release:        33.17%{?dist}
 Epoch:          2
 Group:          System Environment/Base
 License:        GPLv2+
@@ -19,9 +19,23 @@ Source3:        amd-ucode-2018-05-24.tar
 Source5:        intel_ucode2microcode
 Source6:        check_caveats
 Source7:        reload_microcode
+
+# BDW EP/EX caveat
+# https://bugzilla.redhat.com/show_bug.cgi?id=1622180
+# https://bugzilla.redhat.com/show_bug.cgi?id=1623630
+# https://bugzilla.redhat.com/show_bug.cgi?id=1646383
 Source8:        06-4f-01_config
 Source9:        06-4f-01_readme
+
 Source10:       README.caveats
+
+# SNB-EP (CPUID 0x206d7) post-MDS hangs
+# https://bugzilla.redhat.com/show_bug.cgi?id=1758382
+# https://github.com/intel/Intel-Linux-Processor-Microcode-Data-Files/issues/15
+Source11:       https://github.com/intel/Intel-Linux-Processor-Microcode-Data-Files/raw/microcode-20190514/intel-ucode/06-2d-07
+Source12:       06-2d-07_config
+Source13:       06-2d-07_readme
+
 Buildroot:      %{_tmppath}/%{name}-%{version}-root
 Requires(pre):  /sbin/chkconfig /sbin/service
 Requires(pre):  grep gawk coreutils
@@ -53,8 +67,13 @@ tar xf %{SOURCE3}
 
 %build
 make CFLAGS="$RPM_OPT_FLAGS" %{?_smp_mflags}
+
+mv intel-ucode/06-2d-07 intel-ucode-with-caveats
+cp "%{SOURCE11}" intel-ucode/
+
 bash -efu %{SOURCE5} "intel-ucode" microcode.dat
 bash -efu %{SOURCE5} "intel-ucode-with-caveats/06-4f-01" microcode-06-4f-01.dat
+bash -efu %{SOURCE5} "intel-ucode-with-caveats/06-2d-07" microcode-06-2d-07.dat
 
 %install
 rm -rf %{buildroot}
@@ -66,6 +85,7 @@ mkdir -p %{buildroot}/lib/firmware/amd-ucode/
 mkdir -p %{buildroot}/usr/share/doc/microcode_ctl/
 mkdir -p %{buildroot}/usr/libexec/microcode_ctl/
 mkdir -p %{buildroot}/usr/share/microcode_ctl/ucode_with_caveats/intel-06-4f-01
+mkdir -p %{buildroot}/usr/share/microcode_ctl/ucode_with_caveats/intel-06-2d-07
 
 make DESTDIR=%{buildroot} PREFIX=%{_prefix} \
      INSDIR=/sbin MANDIR=%{_mandir}/man8 RCDIR=%{_sysconfdir} install clean
@@ -75,6 +95,7 @@ rm -rf %{buildroot}/etc/*
 install -m 644 %{SOURCE1} %{buildroot}/lib/udev/rules.d/89-microcode.rules
 install -m 644 microcode.dat %{buildroot}/lib/firmware/microcode.dat
 install -m 644 microcode-06-4f-01.dat %{buildroot}/lib/firmware/microcode-06-4f-01.dat
+install -m 644 microcode-06-2d-07.dat %{buildroot}/lib/firmware/microcode-06-2d-07.dat
 install -m 644 %{SOURCE10} README.caveats
 
 # Provide Intel microcode license, as it requires
@@ -86,6 +107,9 @@ install -m 755 %{SOURCE7} %{buildroot}/usr/libexec/microcode_ctl/reload_microcod
 
 install -m 644 %{SOURCE8} %{buildroot}/usr/share/microcode_ctl/ucode_with_caveats/intel-06-4f-01/config
 install -m 644 %{SOURCE9} %{buildroot}/usr/share/microcode_ctl/ucode_with_caveats/intel-06-4f-01/readme
+
+install -m 644 %{SOURCE12} %{buildroot}/usr/share/microcode_ctl/ucode_with_caveats/intel-06-2d-07/config
+install -m 644 %{SOURCE13} %{buildroot}/usr/share/microcode_ctl/ucode_with_caveats/intel-06-2d-07/readme
 
 install -m 644 amd-ucode-2018-05-24/LICENSE.amd-ucode LICENSE.amd-ucode
 install -m 644 amd-ucode-2018-05-24/microcode_amd.bin %{buildroot}/lib/firmware/amd-ucode/microcode_amd.bin
@@ -120,6 +144,17 @@ rm -rf %{buildroot}
 exit 0
 
 %changelog
+* Sun Oct 06 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:1.17-33.17
+- Do not update 06-2d-07 (SNB-E/EN/EP) to revision 0x718, use 0x714
+  by default (#1758382).
+
+* Sun Oct 06 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:1.17-33.16
+- Revert more strict model check code, as it requires request_firmware-based
+  microcode loading mechanism and breaks enabling of microcode with caveats.
+
+* Thu Sep 19 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:1.17-33.15
+- Intel CPU microcode update to 20190918 (#1753540).
+
 * Wed Jun 19 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:1.17-33.14
 - Intel CPU microcode update to 20190618 (#1717238).
 

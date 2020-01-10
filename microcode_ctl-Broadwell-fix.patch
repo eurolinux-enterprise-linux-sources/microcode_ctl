@@ -1,0 +1,46 @@
+This patch checks for Broadwell-EP/EX processor model and, if it is matched,
+checks whether the kernel has a version that contains patches for its support.
+If the latter check is succeeded, Broadwell-specific *.dat file is used,
+otherwise the microcode update is skipped.
+Index: microcode_ctl-1.17/microcode_ctl.start
+===================================================================
+--- microcode_ctl-1.17.orig/microcode_ctl.start	2006-06-28 16:51:31.000000000 +0200
++++ microcode_ctl-1.17/microcode_ctl.start	2019-05-10 21:30:32.686073676 +0200
+@@ -13,6 +13,7 @@
+ 
+ DEVICE=/dev/cpu/microcode
+ ARGUMENTS=-Qu
++MICROCODE_FILE=/lib/firmware/microcode.dat
+ RETVAL=0
+ 
+ # Sort out the executable to run.
+@@ -135,7 +136,28 @@
+ 		echo "Applying Intel IA32 Microcode update... "
+ 	fi
+ 
+-	$START $PROGRAM $ARGUMENTS
++	# Kludge for avoiding loading of BDW-EP/EX microcode on older kernels
++	if grep -l GenuineIntel /proc/cpuinfo | xargs grep -l -E "model[[:space:]]*: 79$" > /dev/null;
++	then
++		local BDW_CFG CHECK_CAVEATS cc_out ok_cfgs
++
++		CFG_BDW=intel-06-4f-01
++		CHECK_CAVEATS=/usr/libexec/microcode_ctl/check_caveats
++
++		cc_out=$("$CHECK_CAVEATS" -m -c "$CFG_BDW") || exit 1
++
++		# Check that the configuration hasn't been skipped
++		ok_cfgs=$(printf "%s" "$cc_out" | sed -n 's/^ok_cfgs //p')
++
++		if [ "x$ok_cfgs" = "x$CFG_BDW" ]; then
++			MICROCODE_FILE=/lib/firmware/microcode-06-4f-01.dat
++		else
++			echo "$0: Microcode update for this CPU model may result in unexpected system behaviour. Please refer to /usr/share/doc/microcode_ctl-1.17/README.caveats for additional details."
++			exit 1
++		fi
++	fi
++
++	$START $PROGRAM $ARGUMENTS -f $MICROCODE_FILE
+ 	copyreturncode
+ 	if [ "$VERBOSE" != no ] ; then
+ 		$END

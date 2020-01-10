@@ -1,0 +1,12 @@
+diff -urpN microcode_ctl-1.17.orig/microcode_ctl.8 microcode_ctl-1.17/microcode_ctl.8
+--- microcode_ctl-1.17.orig/microcode_ctl.8	2011-01-19 16:32:06.039628069 +0100
++++ microcode_ctl-1.17/microcode_ctl.8	2011-01-19 16:32:25.111506738 +0100
+@@ -10,7 +10,7 @@ microcode_ctl \- microcode utility for I
+ ." Add any additional description here
+ .PP
+ The microcode_ctl utility is a companion to the IA32 microcode driver written
+-by Tigran Aivazian <tigran@aivazian.fsnet.co.uk>. The uaility has two uses:
++by Tigran Aivazian <tigran@aivazian.fsnet.co.uk>. The utility has two uses:
+ .br
+ .PP
+ \fBa)\fR it decodes and sends new microcode to the kernel driver to be

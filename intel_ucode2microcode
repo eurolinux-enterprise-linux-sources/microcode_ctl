@@ -1,0 +1,16 @@
+#!/bin/bash -efu
+
+indir=${1-intel-ucode}
+outfile=${2-microcode.dat}
+
+echo "Generationg $outfile..." >&2
+
+IFS=$'\n';
+printf "" > "$outfile"
+find ${indir} -type f | sort | while read -r i; do
+	echo "  Adding $i to $outfile" >&2
+	echo "/* $(basename "$i") */" >> "$outfile"
+	hexdump -v -e '"0x%08x, 0x%08x, 0x%08x, 0x%08x,\n"' "$i" >> "$outfile"
+done
+
+echo "Generation of $outfile done." >&2

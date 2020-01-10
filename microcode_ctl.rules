@@ -1,0 +1,2 @@
+KERNEL=="cpu0", ACTION=="add", RUN+="/sbin/modprobe microcode"
+KERNEL=="microcode", ACTION=="add", SUBSYSTEM=="firmware", RUN+="/usr/libexec/microcode_ctl/reload_microcode"

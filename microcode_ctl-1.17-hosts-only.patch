@@ -1,0 +1,61 @@
+From e72f24a08d7456904156406cff4b9cc5209183d4 Mon Sep 17 00:00:00 2001
+From: Anton Arapov <anton@redhat.com>
+Date: Fri, 23 Aug 2013 13:07:40 +0200
+Subject: [PATCH] update cpu microcode on a hosts only
+
+Signed-off-by: Anton Arapov <anton@redhat.com>
+---
+ microcode_ctl.c | 23 +++++++++++++++++++++++
+ 1 file changed, 23 insertions(+)
+
+diff --git a/microcode_ctl.c b/microcode_ctl.c
+index 3f9c151..a03847d 100644
+--- a/microcode_ctl.c
++++ b/microcode_ctl.c
+@@ -25,6 +25,8 @@ int print_error_messages=1;
+ #define BUFFER_SIZE	4096
+ #define MAX_MICROCODE	2000000
+ 
++#define CHECK_BIT(var,pos) ((var) & (1<<(pos)))
++
+ #define MICROCODE_DEVICE_DEFAULT	"/dev/cpu/microcode"
+ #define MICROCODE_FILE_DEFAULT		"/lib/firmware/microcode.dat"
+ 
+@@ -43,6 +45,21 @@ static void usage(void)
+ 	exit(1);
+ }
+ 
++/*
++ * Detect hypervisor presence
++ * Returns 0 on a real CPU (but also with some hypervisors)
++ */
++int is_real_cpu() {
++	int eax, ecx;
++
++	__asm__("cpuid"
++		:"=a"(eax), "=c"(ecx)
++		:"0"(1)
++	);
++
++	return CHECK_BIT(ecx, 31);
++}
++
+ /* 
+  * The update has two stages; 
+  * a) read in the Intel microcode file and convert it into a format suitable
+@@ -172,6 +189,12 @@ int main(int argc, char *argv[])
+ 	}
+ 
+ 	if (upload) {
++		if (is_real_cpu() != 0) {
++			if(print_error_messages)
++				fprintf(stderr, "%s: cannot update a microcode of a guest vm.\n", progname);
++			return 1;
++		}
++
+ 		if((return_code = do_update(device, filename)))
+ 			exit(return_code);
+ 	} else
+-- 
+1.8.3.1
+

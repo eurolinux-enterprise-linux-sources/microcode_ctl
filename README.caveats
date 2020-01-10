@@ -1,7 +1,11 @@
-The microcode_ctl package shipped with RHEL contains provisions for issues with
-microcode loading on the old kernels.  While those provisions are expected
-to suit most users, several knobs are provided in order to provide ability
-to override the default behaviour.
+The microcode_ctl package contains microcode files (vendor-provided binary data
+and/or code in proprietary format that affects behaviour of a device) for Intel
+CPUs that may be loaded into the CPU during boot.
+
+The microcode_ctl package contains provisions for some issues related
+to microcode loading.  While those provisions are expected to suit most users,
+several knobs are available in order to provide ability to override the default
+behaviour.
 
 
 General behaviour
@@ -393,7 +397,7 @@ and "reload_microcode script" for details).
 
 Affected microcode: intel-ucode/06-4f-01.
 
-Mitigation: late microcode loading is disabled for the affected CPU model.
+Mitigation: microcode loading is disabled for the affected CPU model.
 
 Minimum versions of the kernel package that contain the aforementioned patch
 series:
@@ -421,24 +425,31 @@ Affected microcode: all.
 
 Mitigation: early microcode loading is disabled for all CPU models.
 
-Minimum versions of kernel RPM that contain the fix:
+Minimum versions of the kernel package that contain the fix:
  - Upstream/RHEL 8: 4.10.0
  - RHEL 7.6 onwards: 3.10.0-930
  - RHEL 7.5: 3.10.0-862.14.1
  - RHEL 7.4: 3.10.0-693.38.1
  - RHEL 7.3: 3.10.0-514.57.1
- - RHEL 7.2; 3.10.0-327.73.1
+ - RHEL 7.2: 3.10.0-327.73.1
 
 
 Additional information
 ======================
+Red Hat provides updated microcode, developed by our microprocessor
+partners, as a customer convenience.  Please contact your hardware vendor
+to determine whether more recent BIOS/firmware updates are recommended
+because additional improvements may be available.
 
-Information regarding microcode versions required for mitigating specific
-side-channel cache attacks is available in the following knowledge base
-articles:
+Information regarding microcode revisions required for mitigating specific
+microarchitectural side-channel attacks is available in the following
+knowledge base articles:
  * CVE-2017-5715 ("Spectre"):
    https://access.redhat.com/articles/3436091
  * CVE-2018-3639 ("Speculative Store Bypass"):
    https://access.redhat.com/articles/3540901
  * CVE-2018-3620, CVE-2018-3646 ("L1 Terminal Fault Attack"):
    https://access.redhat.com/articles/3562741
+ * CVE-2018-12130, CVE-2018-12126, CVE-2018-12127, and CVE-2019-11091
+   ("Microarchitectural Data Sampling"):
+   https://access.redhat.com/articles/4138151

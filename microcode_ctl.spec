@@ -1,5 +1,5 @@
 %define upstream_version 2.1-18
-%define intel_ucode_version 20190507_Public_DEMO
+%define intel_ucode_version 20190514a
 %define intel_ucode_file_id 28727
 %define microcode_ctl_libexec %{_libexecdir}/microcode_ctl
 %define update_ucode %{microcode_ctl_libexec}/update_ucode
@@ -11,14 +11,13 @@
 Summary:        Tool to transform and deploy CPU microcode update for x86.
 Name:           microcode_ctl
 Version:        2.1
-Release:        47.2%{?dist}
+Release:        47.4%{?dist}
 Epoch:          2
 Group:          System Environment/Base
 License:        GPLv2+ and Redistributable, no modification permitted
 URL:            https://pagure.io/microcode_ctl
 Source0:        https://releases.pagure.org/microcode_ctl/%{name}-%{upstream_version}.tar.xz
-#Source1:        https://github.com/intel/Intel-Linux-Processor-Microcode-Data-Files/archive/microcode-%{intel_ucode_version}.tar.gz
-Source1:        microcode-%{intel_ucode_version}.tar.gz
+Source1:        https://github.com/intel/Intel-Linux-Processor-Microcode-Data-Files/archive/microcode-%{intel_ucode_version}.tar.gz
 
 Source2:        microcode.service
 
@@ -28,7 +27,6 @@ Source4:        dracut_99microcode_ctl-fw_dir_override_module_init.sh
 Source5:        update_ucode
 Source6:        check_caveats
 Source7:        reload_microcode
-Source8:        disclaimer
 
 Source9:        99-microcode-override.conf
 
@@ -99,14 +97,7 @@ make CFLAGS="$RPM_OPT_FLAGS" %{?_smp_mflags}
 touch ghost_list
 
 tar xf "%{SOURCE1}" --wildcards --strip-components=1 \
-	\*/license \*/releasenote
-
-# In the 20190507 release, 06-4f-01 ucode has been moved back into intel-ucode;
-# reverting it, as it is still considered unsafe:
-#   https://bugzilla.redhat.com/show_bug.cgi?id=1623630
-#   https://bugzilla.redhat.com/show_bug.cgi?id=1646383
-mkdir intel-ucode-with-caveats
-mv intel-ucode/06-4f-01 intel-ucode-with-caveats/
+	\*/intel-ucode-with-caveats \*/license \*/releasenote
 
 # man page
 sed "%{SOURCE31}" \
@@ -123,7 +114,6 @@ mkdir -p %{buildroot}%{_unitdir}
 install -m 644 %{SOURCE2} -t %{buildroot}%{_unitdir}
 install -m 644 %{SOURCE3} %{SOURCE9} \
 	-t %{buildroot}%{dracutlibdir}/dracut.conf.d
-install -m 644 %{SOURCE8} %{buildroot}/usr/share/doc/microcode_ctl/disclaimer
 
 mkdir -p "%{buildroot}%{dracutlibdir}/modules.d/99microcode_ctl-fw_dir_override"
 install -m 755 %{SOURCE4} \
@@ -180,14 +170,7 @@ rm -rf intel-ucode
 %{update_ucode}
 %{reload_microcode}
 
-# send the message to syslog, so it gets recorded on /var/log
-if [ -e /usr/bin/logger ]; then
-	/usr/bin/logger -p syslog.notice -t DISCLAIMER -f /usr/share/doc/microcode_ctl/disclaimer
-fi
-# also paste it over dmesg (some customers drop dmesg messages while
-# others keep them into /var/log for the later case, we'll have the
-# disclaimer recorded twice into system logs.
-cat /usr/share/doc/microcode_ctl/disclaimer > /dev/kmsg
+exit 0
 
 %posttrans
 # We only want to regenerate the initramfs for a fully booted
@@ -292,6 +275,14 @@ rm -rf %{buildroot}
 
 
 %changelog
+* Sun Jun 02 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:2.1-47.4
+- Remove disclaimer, as it is not as important now to justify kmsg/log
+  pollution; its contents are partially adopted in README.caveats.
+
+* Wed May 29 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:2.1-47.3
+- Intel CPU microcode update to 20190514a.
+- Resolves: #1714958.
+
 * Fri May 10 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:2.1-47.2
 - Intel CPU microcode update to 20190507_Public_DEMO.
 - Resolves: #1704374.

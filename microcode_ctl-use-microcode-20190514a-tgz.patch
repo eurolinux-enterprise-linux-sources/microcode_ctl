@@ -7,7 +7,7 @@ Index: microcode_ctl-2.1-18/Makefile
  
  PROGRAM         = intel-microcode2ucode
 -MICROCODE_INTEL = microcode-20180703.tgz
-+MICROCODE_INTEL = microcode-20190507_Public_DEMO.tar.gz
++MICROCODE_INTEL = microcode-20190514a.tar.gz
  
  INS             = install
  CC              = gcc

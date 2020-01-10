@@ -25,6 +25,9 @@ to the following knowledge base articles:
    https://access.redhat.com/articles/3540901
  * CVE-2018-3620, CVE-2018-3646 ("L1 Terminal Fault Attack"):
    https://access.redhat.com/articles/3562741
+ * CVE-2018-12130, CVE-2018-12126, CVE-2018-12127, and CVE-2019-11091
+   ("Microarchitectural Data Sampling"):
+   https://access.redhat.com/articles/4138151
 
 The information regarding enforcing microcode load is provided below.
 

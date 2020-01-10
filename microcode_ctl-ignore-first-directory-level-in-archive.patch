@@ -1,0 +1,13 @@
+Index: microcode_ctl-2.1-18/Makefile
+===================================================================
+--- microcode_ctl-2.1-18.orig/Makefile	2019-04-16 00:47:14.671953255 +0200
++++ microcode_ctl-2.1-18/Makefile	2019-04-16 00:57:29.656380940 +0200
+@@ -23,7 +23,7 @@
+ MICDIRINTEL     = $(MICDIR)/intel-ucode
+ 
+ all: microcode_ctl
+-	tar -xf $(MICROCODE_INTEL) ./intel-ucode
++	tar -xf ${MICROCODE_INTEL} --wildcards --strip-components=1 \*/intel-ucode
+ 
+ microcode_ctl: intel-microcode2ucode.c
+ 	$(CC) $(CFLAGS) -o $(PROGRAM) intel-microcode2ucode.c

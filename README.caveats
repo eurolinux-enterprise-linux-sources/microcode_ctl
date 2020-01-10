@@ -1,0 +1,444 @@
+The microcode_ctl package shipped with RHEL contains provisions for issues with
+microcode loading on the old kernels.  While those provisions are expected
+to suit most users, several knobs are provided in order to provide ability
+to override the default behaviour.
+
+
+General behaviour
+=================
+In RHEL 7, there are currently two main handlers for CPU microcode update:
+ * Early microcode update. It uses GenuineIntel.bin or AuthenticAMD.bin file
+   placed at the beginning of an initramfs image
+   (/boot/initramfs-KERNEL_VERSION.img, where "KERNEL_VERSION" is a kernel
+   version in the same format as provided by "uname -r") as a source
+   of microcode data, and is performed very early during the boot process
+   (if the relevant microcode file is available in the aforementioned file).
+ * On-demand (late) microcode update. It can be triggered by writing "1" to
+   /sys/devices/system/cpu/microcode/reload file (provided my the "microcode"
+   module). It relies on request_firmware infrastructure, which searches (and
+   loads, if found) microcode from a file present in one of the following
+   directories (in the search order):
+       /lib/firmware/updates/KERNEL_VERSION/
+       /lib/firmware/updates/
+       /lib/firmware/KERNEL_VERSION/
+       /lib/firmware/
+  (there is also an additional directory that can be configured via the
+  "fw_path_para" module option of the "firmware_class" module; as this module
+  is built-in in RHEL kernel, a boot parameter "firmware_class.fw_path_para"
+  should be used for that purpose; this is out of the document's scope, however)
+
+The firmware for Intel CPUs is searched in "intel-ucode" subdirectory, and for
+AMD CPUs, a file under "amd-ucode" is searched.
+
+For Intel CPUs, the name of the specific microcode file the kernel tries to load
+has the format "FF-MM-SS", where "FF" is the family number, "MM" is the model
+number, and "SS" is the stepping. All those numbers are zero-filled to two digits
+and are written in hexadecimal (letters are in the lower case).  For AMD CPUs,
+the file name has the format "microcode_amd_famFFh.bin", where "FF" is the
+family number, written in hexadecimal, letters are in the lower case, not
+zero-filled.
+
+The early microcode is placed into initramfs image by the "dracut" script, which
+scans the aforementioned subdirectories of the configured list of firmware
+directories (by default, the list consists of two directories in RHEL 7,
+"/lib/firmware/updates" and "/lib/firmware").
+
+In RHEL 7, AMD CPU microcode is shipped as a part of the linux-firmware package,
+and Intel microcode is shipped as a part of the microcode_ctl package.
+
+The microcode_ctl package currently includes the following:
+ * Intel CPU microcode files, placed in /usr/share/microcode_ctl/intel-ucode
+   directory (currently there are none);
+ * A dracut module, /usr/lib/dracut/modules.d/99microcode_ctl-fw_dir_override,
+   that controls which additional firmware directories will be added to dracut's
+   default configuration;
+ * A dracut configuration file, /usr/lib/dracut/dracut.conf.d/01-microcode.conf,
+   that enables inclusion of early microcode to the generated initramfs
+   in dracut;
+ * A dracut configuration file,
+   /usr/lib/dracut/dracut.conf.d/99-microcode-override.conf, that provides a way
+   to quickly disable 99microcode_ctl-fw_dir-override dracut module;
+ * A systemd service file, microcode.service, that triggers microcode reload
+   late during boot;
+ * A set of directories in /usr/share/microcode_ctl/ucode_with_caveats, each
+   of which contains configuration and related data for various caveats related
+   to microcode:
+   * readme - description of caveat and related information,
+   * config - caveat configuration file, with syntax as described in "Caveat
+     configuration" section below,
+   * intel-ucode - directory containing microcode files related to the caveat;
+ * A set of support scripts, placed in /usr/libexec/microcode_ctl:
+   * "check_caveats" is an utility script that performs checks of the target
+     kernel (and running CPU) in accordance with caveat configuration files
+     in ucode_with_caveats directory and reports whether it passes them or not,
+   * "reload_microcode" is a script that is called by microcode.service and
+     triggers microcode reloading (by writing "1" to
+     /sys/devices/system/cpu/microcode/reload) if the running kernel passes
+     check_caveats checks,
+   * "update_ucode" is a script that populates symlinks to microcode files
+     in /lib/firmware, so it can be picked up by relevant kernels for the late
+     microcode loading.
+
+Also, microcode_ctl RPM includes triggers that run update_ucode script on every
+installation or removal of a kernel RPM in order to provide microcode files
+for newly installed kernels and cleanup symlinks for the uninstalled ones.
+
+
+Caveat configuration
+--------------------
+There is a directory for each caveat under
+/usr/share/microcode_ctl/ucode_with_caveats, containing the following files:
+ * "config", a configuration file for the caveat;
+ * "readme", that contains description of the caveat;
+ * set of related associated microcode files.
+
+"config" file is a set of lines each containing option name and its value,
+separated by white space.  Currently, the following options are supported:
+ * "model" option, which has format "VENDOR_ID FF-MM-SS", that specifies
+   to which CPU model the caveat is applicable (check_caveats ignores caveats
+   with non-matching models if "-m" option is passed to it). Can be set
+   in the configuration file only once (the last provided value is used).
+ * "vendor" option specifies CPUs of which vendor (as provided
+   in the /proc/cpuinfo file) the caveat is applicable to (check_caveats
+   ignores caveats with non-matching models when it is invoked with "-m"
+   option). Can be set in the configuration file only once.
+ * "path" is a glob pattern that specifies set of microcode files associated
+   with the caveat as a relative path to the caveat directory. This option
+   is used for populating files in /lib/firmware by update_ucode script and
+   for matching microcode file when dracut is run in host-only mode
+   (as in that case it uses only the first directory in firmware directory list
+   to look for the microcode file applicable to the host CPU).  Can be set
+   in the configuration file multiple times.
+ * "kernel" is a minimal kernel version that supports proper handling
+   of the related microcode files during late microcode load.  It may be
+   provided in one of the following formats that affect the way it is compared
+   to the running kernel version:
+    * A.B.C (where A, B, and C are decimal numbers), "upstream version". In this
+      case, simple version comparison against the respective part of the running
+      kernel version is used, and the running kernel version should be greater
+      or equal than the version provided in the configuration option in order
+      for comparison to succeed (that is, the first part, major version number,
+      of the running kernel version should be greater than the value provided
+      in the configuration option, or those should be equal and the second part,
+      minor version number, should be greater than the minor version number
+      of the kernel version provided in the configuration option, or the first
+      two parts should be equal and the third part, patch level, should
+      be greater or equal the patch level of the version in the configuration
+      option).
+    * A.B.C-Y (where A, B, C, and Y are decimal numbers), "Y-stream version".
+      In this case, A.B.C part should be equal, and Y part of the running kernel
+      version should be greater or equal than the Y part of the configuration
+      option version in order to satisfy the comparison requirement.
+    * A.B.C-Y.Z1.Z2 (where A, B, C, Y, Z1, and Z2 are decimal numbers),
+      "Z-stream version". In this case, A.B.C-Y part should be equal and Z1.Z2
+      part of the running kernel should be greater or equal than the respective
+      part of the configuration option version (when compared as a version)
+      for comparison to succeed.
+   Kernel version check passed if at least one comparison of the running kernel
+   version against a kernel version provided in a configuration option
+   succeeded.  The "kernel" configuration option can be provided
+   in the configuration file multiple times.
+ * "kernel_early" is a minimal kernel version that supports proper handling
+   of the related microcode during early microcode load. The format of the
+   option and its semantics is similar to the "kernel" configuration options.
+   This option can be provided multiple times as well.
+ * "mc_min_ver_late" is the minimal version of the currently loaded microcode
+   on the CPU (as reported in /proc/cpuinfo) that supports late microcode
+   update.  Microcode update will be attempted only if the currently loaded
+   microcode version is greater or equal the microcode version provided
+   in the configuration option. Can be set in the configuration file only once.
+ * "disable" is a way to disable a specific caveat from inside its
+   configuration. Argument for the argument is a list of stages ("early",
+   "late") for which the caveat should be disable. The configuration option
+   can be provided multiple times in a configuration file.
+ * "blacklist" is a marker for a start of list of blacklisted model names,
+   one model name per line. The model name of the running CPU (as reported
+   in /proc/cpuinfo) is compared against the names in the provided list, and,
+   if there is a match, caveat check fails.
+
+
+check_caveats script
+--------------------
+"check_caveats" is an utility script (called by update_ucode, reload_microcode,
+dracut module) that performs checks of the target kernel (and running CPU)
+in accordance with caveat configuration files in directory
+"/usr/share/microcode_ctl/ucode_with_caveats", and returns information, whether
+the system passes the checks, or not.
+
+Usage:
+    check_caveats [-e] [-k TARGET_KVER] [-c CONFIG]* [-m] [-v]'
+
+Options:
+  -e - check for early microcode load possibility (instead of late microcode
+       load). "kernel_early" caveat configuration options are used for checking
+       instead of "kernel", and "mc_min_ver_late" is not checked.
+  -k - target kernel version to check against, $(uname -r) is used otherwise.
+  -c - caveat(s) to check, all caveat configurations found inside
+       $MC_CAVEATS_DATA_DIR are checked otherwise.
+  -m - ignore caveats that do not apply to the current CPU model.
+  -v - verbose output.
+
+Environment:
+  MC_CAVEATS_DATA_DIR - directory that contains caveats configurations,
+                        "/usr/share/microcode_ctl/ucode_with_caveats"
+			by default.
+  FW_DIR - directory containing firmware files (per-kernel configuration
+           overrides are checked there), "/lib/firmware" by default.
+  CFG_DIR - directory containing global caveats overrides,
+            "/etc/microcode_ctl/ucode_with_caveats" by default.
+
+Output:
+  Script returns information about caveats check results. Output has a format
+  of "KEY VALUE1 VALUE2 ..." with KEY defining the semantics of the VALUEs.
+  Currently, the following data is issued:
+   - "cfgs" - list of caveats that have been processed (and not skipped
+      due to missing "config", "readme", or a disallow-* override described
+      below);
+   - "skip_cfgs" - list of caveats that have been skipped (due to missing
+     config/readme file, or because of overrides);
+   - "paths" - list of glob patterns matching files associated with caveats
+     that have been processed;
+   - "ok_cfgs" - list of caveat configurations that have all the checks passed
+     (or have enforced by one of force-* overrides described below);
+   - "ok_paths" - list of glob patterns associated with caveat files from
+     the "ok_cfgs" list;
+   - "fail_cfgs" - list of caveats that have one of the checks failed.
+   - "fail_paths" - list of glob patterns associated with caveats from the
+     "fail_cfgs" list.
+
+Return value:
+  - 0 in case caveats check has passed, 1 otherwise.
+  - In "-d" mode, 0 is always returned.
+
+Overrides:
+
+When check_caveats perform its checks, it also checks for presence of files
+in specific places, and, if they exist, check_caveats skips a caveat or ignores
+its checks; that mechanism allows overriding the information provided
+in configuration on local systems and affect the behaviour of the microcode
+update process.
+
+Current list of overrides (where $FW_DIR and $CFG_DIR are the environment
+options described earlier; $kver - the currently processed kernel version,
+$s is the requested stage ("early" or "late"), $cfg is the caveat directory
+name):
+    $FW_DIR/$kver/disallow-$s-$cfg - skip a caveat for the requested stage for
+                                     a specific kernel version..
+    $FW_DIR/$kver/force-$s-$cfg - apply a specific caveat file for a specific
+                                  kernel version for the requested stage without
+				  performing any checks.
+    $FW_DIR/$kver/disallow-$cfg - skip a caveat for any stage for a specific
+                                  kernel version.
+    $FW_DIR/$kver/force-$cfg - apply a specific caveat for any stage
+                               for a specific kernel version without checks.
+    $FW_DIR/$kver/disallow-$s - skip all caveats for a specific stage
+                                for a specific kernel version.
+    $CFG_DIR/disallow-$s-$cfg - skip a caveat for a specific stage for all
+                                kernel versions.
+    $FW_DIR/$kver/force-$s - apply all caveats for a specific stage
+                             for a specific kernel version without checks.
+    $CFG_DIR/force-$s-$cfg - apply a specific caveat for a specific stage for
+                             all kernel versions without checks.
+    $FW_DIR/$kver/disallow - skip all caveats for all stages for a specific
+                             kernel version.
+    $CFG_DIR/disallow-$cfg - skip a caveat for all stages for all kernel
+                             versions.
+    $FW_DIR/$kver/force - apply all caveats for all stages for a specific kernel
+                          version without checks.
+    $CFG_DIR/force-$cfg - apply a caveat for all stages for all kernel versions
+                          without checks.
+    $CFG_DIR/disallow-$s - skip all caveat for all kernel versions
+                           for a specific stage.
+    $CFG_DIR/force-$s - apply all caveats for all kernel versions for  specific
+                        stage without checks.
+    $CFG_DIR/disallow - skip all caveats for all stages for all kernel versions
+                        (disable everything).
+    $CFG_DIR/force - force all caveats for all stages for all kernel versions
+                     (enable everything).
+
+The "apply" action above means creating symlinks in /lib/firmware by
+update_ucode in case of the "late" stage and adding caveat directory to the list
+of firmware directories by dracut plugin in case of the "early" stage.
+
+The files are checked for existence until the first match, so more specific
+overrides can override more broad ones.
+
+Also, a caveat is ignored if it lacks either config or readme file.
+
+
+update_ucode script
+-------------------
+"update_ucode" populates symlinks to microcode files in accordance with caveats
+configuration.  It enables late microcode loading that is invoked by triggering
+/sys/devices/system/cpu/microcode/reload file.  Since caveats depend
+on the kernel version, symlinks are populated inside
+"/lib/firmware/KERNEL_VERSION" directory for each installed kernel.
+As a consequence, this script is triggered upon each kernel package installation
+and removal.
+
+The script has two parts: common and kernel-version-specific.
+
+During the common part, files are populated from
+/usr/share/microcode_ctl/intel-ucode in /lib/firmware/intel-ucode. There are
+several possibilities to affect the process:
+ * Presence of "/etc/microcode_ctl/intel-ucode-disallow" file leads to skipping
+   the common part of the script.
+ * The same for "/lib/firmware/intel-ucode-disallow".
+
+During the kernel-version-specific part, each caveat is checked against every
+kernel version, and those combinations, for which caveat check succeeds,
+gets the symlinks to the associated microcode files populated.
+ * Absence of "/lib/firmware/KERNEL_VERSION/readme-CAVEAT" prevents update_ucode
+   from removing symlinks related to the caveat for specific kernel version.
+ * Since the check is being done by check_caveats, all the overrides that
+   described there also stay.
+
+Usage:
+    update_ucode [--action {add|remove|refresh|list}] [--kernel KERNELVER]*
+                 [--verbose] [--dry-run] [--cleanup intel_ucode caveats_ucode]
+                 [--skip-common] [--skip-kernel-specific]
+
+Options:
+  --action - action to perform. Currently, the following actions are supported:
+              * "add" - create new symlinks.
+              * "remove" - remove old symlinks that are no longer needed.
+              * "refresh" - re-populate symlinks.
+              * "list" - list files under control of update_ucode.
+             By default, "refresh" action is executed.
+  --kernel - kernel version to process. By default, list of kernel versions
+             is formed based on contents of /lib/firmware and /lib/modules
+             directories.
+  --verbose - verbose output.
+  --dry-run - do not call commands, just print the invocation lines.
+  --cleanup - cleanup mode. Used by post-uninstall script during package
+              upgrades. Removes excess files in accordance to the contents
+              of the files provided in the arguments to the option.
+  --skip-common - do not process /lib/firmware directory.
+  --skip-kernel-specific - do not process /lib/firmware/KERNEL_VERSION
+                           directories.
+
+Return value:
+  0 on success, 1 on error.
+
+
+reload_microcode script
+-----------------------
+"reload_microcode" is a script that is called by microcode.service and
+triggers late microcode reloading (by writing "1" to
+/sys/devices/system/cpu/microcode/reload) if the following check are passed:
+ * the microcode update performed not in a virtualised environment;
+ * running kernel passes "check_caveats" checks that applicable to the current
+   CPU model.
+
+For a virtualised environment check, the script searches the "/proc/cpuinfo"
+file for presence of the "hypervisor" flag among CPU features (it corresponds
+to a CPUID feature bit set by hypervisors in order to inform that the kernel
+operates inside a virtual machine).  This check can be overridden and skipped
+by creation of a file "/etc/microcode_ctl/ignore-hypervisor-flag".
+
+The script has no options and always returns 0.
+
+In addition to overrides that affect check_caveats, the presence of the
+"/etc/microcode_ctl/ignore-hypervisor-flag" flag provides an ability
+to skip "hypervisor" flag check.
+
+
+99microcode_ctl-fw_dir_override dracut module
+---------------------------------------------
+This dracut module injects directories with microcode files for caveats
+that pass "early" check_caveats check (with "-e" flag). In addition
+to "check_caveats" overrides, the following abilities to control module's
+behaviour are present:
+ * Presence of one of the following files:
+   - /etc/microcode_ctl/ucode_with_caveats/skip-host-only-check
+   - /etc/microcode_ctl/ucode_with_caveats/skip-host-only-check-$cfg
+   - /lib/firmware/$kver/skip-host-only-check
+   - /lib/firmware/$kver/skip-host-only-check-$cfg
+   (where "$kver" is the kernel version in question and "$cfg" is the caveat
+   directory name) allows skipping matching of microcode file name when dracut's
+   Host-Only mode is enabled.
+
+When caveats_check succeeds, caveats directory (not its possibly populated
+version for late microcode update: "/lib/firmware/KERNEL_VERSION";
+it is done so in order
+to have ability to configure list of caveats enabled for early and late
+microcode update, independently) is added to dracut's list of firmware search
+directories.
+
+The module can be disabled by running dracut with
+"-o microcode_ctl-fw_dir_override" (for one-time exclusion), or it can
+be disabled permanently by uncommenting string
+"omit_dracutmodules+=' microcode_ctl-fw_dir_override '" in
+/usr/lib/dracut/dracut.conf.d/99-microcode-override.conf configuration file.
+
+See dracut(8), section "Omitting dracut Modules", and dracut.conf(5), variable
+"omit_dracutmodules" for additional information.
+
+
+Caveats
+=======
+
+Intel Broadwell-EP/EX ("BDX-ML B/M/R0") caveat
+----------------------------------------------
+Microcode update process on Intel Broadwell-EP/EX CPUs (BDX-ML B/M/R0,
+family 6, model 79, stepping 1) has issues that lead to system instability.
+A series of changes for the Linux kernel has been developed in order to work
+around those issues; however, as it turned out, some systems have issues even
+when a microcode update performed on a kernel that contains those changes.
+As a result, microcode update for this CPU model is disabled by default;
+the microcode file, however, is still shipped as a part of microcode_ctl
+package and can be used for performing a microcode update if it is enforced
+via the aforementioned overridden. (See sections "check_caveats script"
+and "reload_microcode script" for details).
+
+Affected microcode: intel-ucode/06-4f-01.
+
+Mitigation: late microcode loading is disabled for the affected CPU model.
+
+Minimum versions of the kernel package that contain the aforementioned patch
+series:
+ - Upstream/RHEL 8: 4.17.0
+ - RHEL 7.6 onwards:  3.10.0-894
+ - RHEL 7.5:  3.10.0-862.6.1
+ - RHEL 7.4:  3.10.0-693.35.1
+ - RHEL 7.3:  3.10.0-514.52.1
+ - RHEL 7.2:  3.10.0-327.70.1
+ - RHEL 6.10: 2.6.32-754.1.1
+ - RHEL 6.7:  2.6.32-573.58.1
+ - RHEL 6.6:  2.6.32-504.71.1
+ - RHEL 6.5:  2.6.32-431.90.1
+ - RHEL 6.4:  2.6.32-358.90.1
+
+
+Early microcode load inside a virtual machine
+---------------------------------------------
+RHEL 7 kernel supports performing microcode update during early boot stage
+from a cpio archive placed at the beginning of the initramfs image.  However,
+when an early microcode update is attempted inside some virtualised
+environments, that may result in unexpected system behaviour.
+
+Affected microcode: all.
+
+Mitigation: early microcode loading is disabled for all CPU models.
+
+Minimum versions of kernel RPM that contain the fix:
+ - Upstream/RHEL 8: 4.10.0
+ - RHEL 7.6 onwards: 3.10.0-930
+ - RHEL 7.5: 3.10.0-862.14.1
+ - RHEL 7.4: 3.10.0-693.38.1
+ - RHEL 7.3: 3.10.0-514.57.1
+ - RHEL 7.2; 3.10.0-327.73.1
+
+
+Additional information
+======================
+
+Information regarding microcode versions required for mitigating specific
+side-channel cache attacks is available in the following knowledge base
+articles:
+ * CVE-2017-5715 ("Spectre"):
+   https://access.redhat.com/articles/3436091
+ * CVE-2018-3639 ("Speculative Store Bypass"):
+   https://access.redhat.com/articles/3540901
+ * CVE-2018-3620, CVE-2018-3646 ("L1 Terminal Fault Attack"):
+   https://access.redhat.com/articles/3562741

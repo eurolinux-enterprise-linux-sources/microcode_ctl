@@ -1,0 +1,8 @@
+path intel-ucode/*
+vendor_id GenuineIntel
+kernel_early 4.10.0
+kernel_early 3.10.0-930
+kernel_early 3.10.0-862.14.1
+kernel_early 3.10.0-693.38.1
+kernel_early 3.10.0-514.57.1
+kernel_early 3.10.0-327.73.1

@@ -1,0 +1,73 @@
+Intel Broadwell-EP/EX (BDX-ML B/M/R0, family 6, model 79, stepping 1) has issues
+with microcode update that may lead to a system hang; while some changes
+to the Linux kernel have been made in an attempt to address these issues,
+they were not eliminated, so a possibility of unstable system behaviour
+after a microcode update performed on a running system is still present even
+on a kernels that contain aforementioned changes.  As a result, microcode update
+for this CPU model has been disabled by default.
+
+For the reference, kernel versions for the respective RHEL minor versions
+that contain the aforementioned changes, are listed below:
+ * Upstream/RHEL 8: kernel-4.17.0 or newer;
+ * RHEL 7.6 onwards: kernel-3.10.0-894 or newer;
+ * RHEL 7.5.z: kernel-3.10.0-862.6.1 or newer;
+ * RHEL 7.4.z: kernel-3.10.0-693.35.1 or newer;
+ * RHEL 7.3.z: kernel-3.10.0-514.52.1 or newer;
+ * RHEL 7.2.z: kernel-3.10.0-327.70.1 or newer.
+
+Please contact you system vendor for a BIOS/firmware update that contains
+the latest microcode version. For the information regarding microcode versions
+required for mitigating specific side-channel cache attacks, please refer
+to the following knowledge base articles:
+ * CVE-2017-5715 ("Spectre"):
+   https://access.redhat.com/articles/3436091
+ * CVE-2018-3639 ("Speculative Store Bypass"):
+   https://access.redhat.com/articles/3540901
+ * CVE-2018-3620, CVE-2018-3646 ("L1 Terminal Fault Attack"):
+   https://access.redhat.com/articles/3562741
+
+The information regarding enforcing microcode load is provided below.
+
+For enforcing addition of this microcode to the firmware directory
+for a specific kernel, where it is available for a late microcode update,
+please create a file "force-late-intel-06-4f-01" inside
+/lib/firmware/<kernel_version> directory and run
+"/usr/libexec/microcode_ctl/update_ucode":
+
+    touch /lib/firmware/3.10.0-862.9.1/force-late-intel-06-4f-01
+    /usr/libexec/microcode_ctl/update_ucode
+
+After that, it is possible to perform a late microcode update by executing
+"/usr/libexec/microcode_ctl/reload_microcode" or by writing value "1" to
+"/sys/devices/system/cpu/microcode/reload" directly.
+
+For enforcing addition of this microcode to firmware directories for all
+kernels, please create a file
+"/etc/microcode_ctl/ucode_with_caveats/force-late-intel-06-4f-01"
+and run "/usr/libexec/microcode_ctl/update_ucode":
+
+    touch /etc/microcode_ctl/ucode_with_caveats/force-late-intel-06-4f-01
+    /usr/libexec/microcode_ctl/update_ucode
+
+For enforcing early load of this microcode for a specific kernel, please
+create a file "force-early-intel-06-4f-01" inside
+"/lib/firmware/<kernel_version>" directory and run
+"dracut -f --kver <kernel_version>":
+
+    touch /lib/firmware/3.10.0-862.9.1/force-early-intel-06-4f-01
+    dracut -f --kver 3.10.0-862.9.1
+
+For enforcing early load of this microcode for all kernels, please
+create a file "/etc/microcode_ctl/ucode_with_caveats/force-early-intel-06-4f-01"
+and run dracut -f --regenerate-all:
+
+    touch /etc/microcode_ctl/ucode_with_caveats/force-early-intel-06-4f-01
+    dracut -f --regenerate-all
+
+If you want avoid removal of the microcode file during cleanup performed by
+/usr/libexec/microcode_ctl/update_ucode, please remove the corresponding readme
+file (/lib/firmware/<kernel_version>/readme-intel-06-4f-01).
+
+
+Please refer to /usr/share/doc/microcode_ctl/README.caveats for additional
+information.

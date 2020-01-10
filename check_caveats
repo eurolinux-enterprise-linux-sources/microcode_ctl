@@ -1,0 +1,483 @@
+#! /bin/bash -eu
+
+# Script for checking various microcode caveats
+#
+#
+# SPDX-License-Identifier: CC0-1.0
+
+: ${MC_CAVEATS_DATA_DIR=/usr/share/microcode_ctl/ucode_with_caveats}
+: ${FW_DIR=/lib/firmware}
+: ${CFG_DIR=/etc/microcode_ctl/ucode_with_caveats}
+
+usage() {
+	echo 'Usage: check_caveats [-e] [-k TARGET_KVER] [-c CONFIG] [-m] [-v]'
+	echo
+	echo '   -e - check for early microcode load possibility (instead of'
+	echo '        late microcode load)'
+	echo '   -k - target version to check against, $(uname -r) is used'
+	echo '        otherwise'
+	echo '   -c - caveat config(s) to check, all configs are checked'
+	echo '        otherwise'
+	echo '   -m - check that caveats actually apply to the current model'
+	echo '   -v - verbose output'
+	echo
+	echo 'Environment:'
+	echo '  MC_CAVEATS_DATA_DIR - directory that contains caveats'
+	echo '                        configuration data'
+}
+
+debug() { [ 0 = "$verbose" ] || echo "$*" >&2; }
+
+# A simplified RPM version comparison that takes into account knowledge about
+# Y- and Z-streams (so it compares versions inside Y-stram or Z-stream if
+# the version against which comparison is performed has appropriate versioning
+# scheme).
+#
+# $1 - kernel version to check
+# $* - list of kernel versions to check against
+check_kver()
+{
+	local t_major= t_minor= t_patch= t_y= t_z1= t_z2= t_rest=
+	local m_major= m_minor= m_patch= m_y= m_z1= m_z2= m_rest=
+	local cmp_type=
+
+	# IFS=.- read -r t_major t_minor t_patch t_y t_z1 t_z2 t_rest <<<"$1"
+	# "cannot create temp file for here-document: Read-only file system"
+	# that's why we can't have nice things.
+	t_major=${1%%.*}
+	t_rest=${1#${t_major}}
+	t_rest=${t_rest#.}
+	t_minor=${t_rest%%.*}
+	t_rest=${t_rest#${t_minor}}
+	t_rest=${t_rest#.}
+	t_patch=${t_rest%%-*}
+	t_rest=${t_rest#${t_patch}}
+	t_rest=${t_rest#-}
+	t_y=${t_rest%%.*}
+	t_rest=${t_rest#${t_y}}
+	t_rest=${t_rest#.}
+	t_z1=${t_rest%%.*}
+	t_rest=${t_rest#${t_z1}}
+	t_rest=${t_rest#.}
+	t_z2=${t_rest%%.*}
+
+	# minor/major/patch/y should be numeric
+	[ -n "${t_major##*[!0-9]*}" ] || return 1
+	[ -n "${t_minor##*[!0-9]*}" ] || return 1
+	[ -n "${t_patch##*[!0-9]*}" ] || return 1
+	[ -n "${t_y##*[!0-9]*}" ] || return 1
+	# reset z1/z2 to zero if non-numeric
+	[ -n "${t_z1##*[!0-9]*}" ] || t_z1=0
+	[ -n "${t_z2##*[!0-9]*}" ] || t_z2=0
+
+	while [ 1 -lt "$#" ]; do
+		cmp_type=upstream
+
+		shift
+		m_major=${1%%.*}
+		m_rest=${1#${m_major}}
+		m_rest=${m_rest#.}
+		m_minor=${m_rest%%.*}
+		m_rest=${m_rest#${m_minor}}
+		m_rest=${m_rest#.}
+		m_patch=${m_rest%%-*}
+		m_rest=${m_rest#${m_patch}}
+		m_rest=${m_rest#-}
+		m_y=${m_rest%%.*}
+		m_rest=${m_rest#${m_y}}
+		m_rest=${m_rest#.}
+		m_z1=${m_rest%%.*}
+		m_rest=${m_rest#${m_z1}}
+		m_rest=${m_rest#.}
+		m_z2=${m_rest%%.*}
+
+		# minor/major/patch should be numeric
+		[ -n "${m_major##*[!0-9]*}" ] || continue
+		[ -n "${m_minor##*[!0-9]*}" ] || continue
+		[ -n "${m_patch##*[!0-9]*}" ] || continue
+		# reset z1/z2 to zero if non-numeric
+		[ -n "${m_y##*[!0-9]*}" ] && cmp_type=y || m_y=0
+		[ -n "${m_z1##*[!0-9]*}" ] && cmp_type=z || m_z1=0
+		[ -n "${m_z2##*[!0-9]*}" ] && cmp_type=z || m_z2=0
+
+		# Comparing versions
+		case "$cmp_type" in
+		upstream)
+			[ "$t_major" -ge "$m_major" ] || continue
+			[ "$t_minor" -ge "$m_minor" ] || continue
+			[ "$t_patch" -ge "$m_patch" ] || continue
+			return 0
+			;;
+		y)
+			[ "$t_major" -eq "$m_major" ] || continue
+			[ "$t_minor" -eq "$m_minor" ] || continue
+			[ "$t_patch" -eq "$m_patch" ] || continue
+			[ "$t_y" -ge "$m_y" ] || continue
+			return 0
+			;;
+		z)
+			[ "$t_major" -eq "$m_major" ] || continue
+			[ "$t_minor" -eq "$m_minor" ] || continue
+			[ "$t_patch" -eq "$m_patch" ] || continue
+			[ "$t_y" -eq "$m_y" ] || continue
+			[ "$t_z1" -ge "$m_z1" ] || continue
+			[ "$t_z2" -ge "$m_z2" ] || continue
+			return 0
+			;;
+		esac
+	done
+
+	return 1
+}
+
+# Provides model in format "VENDOR_ID FAMILY-MODEL-STEPPING"
+#
+# We check only the first processor as we don't expect non-symmetrical setups
+# with CPUs with caveats
+get_model_string()
+{
+	/usr/bin/printf "%s %02x-%02x-%02x" \
+		$(/bin/sed -rn '1,/^$/{
+			s/^vendor_id[[:space:]]*: (.*)$/\1/p;
+			s/^cpu family[[:space:]]*: (.*)$/\1/p;
+			s/^model[[:space:]]*: (.*)$/\1/p;
+			s/^stepping[[:space:]]*: (.*)$/\1/p;
+		}' /proc/cpuinfo)
+}
+
+get_model_name()
+{
+	/bin/sed -rn '1,/^$/s/^model name[[:space:]]*: (.*)$/\1/p' /proc/cpuinfo
+}
+
+get_vendor_id()
+{
+	/bin/sed -rn '1,/^$/s/^vendor_id[[:space:]]*: (.*)$/\1/p' /proc/cpuinfo
+}
+
+get_mc_path()
+{
+	case "$1" in
+	GenuineIntel)
+		echo "intel-ucode/$2"
+		;;
+	AuthenticAMD)
+		echo "amd-ucode/$2"
+		;;
+	esac
+}
+
+get_mc_ver()
+{
+	/bin/sed -rn '1,/^$/s/^microcode[[:space:]]*: (.*)$/\1/p' /proc/cpuinfo
+}
+
+fail()
+{
+	ret=1
+
+	fail_cfgs="$fail_cfgs $cfg"
+	fail_paths="$fail_paths $cfg_path"
+}
+
+#check_kver "$@"
+#get_model_name
+
+match_model=0
+configs=
+kver=$(/bin/uname -r)
+verbose=0
+early_check=0
+
+ret=0
+
+while getopts "ek:c:mv" opt; do
+	case "${opt}" in
+	e)
+		early_check=1
+		;;
+	k)
+		kver="$OPTARG"
+		;;
+	c)
+		configs="$configs $OPTARG"
+		;;
+	m)
+		match_model=1
+		;;
+	v)
+		verbose=1
+		;;
+	*)
+		usage
+		exit 1;
+		;;
+	esac
+done
+
+: ${configs:=$(find "${MC_CAVEATS_DATA_DIR}" -maxdepth 1 -mindepth 1 -type d -printf "%f\n")}
+
+cpu_model=$(get_model_string)
+cpu_model_name=$(get_model_name)
+cpu_vendor=$(get_vendor_id)
+
+ret_paths=""
+ok_paths=""
+fail_paths=""
+
+ret_cfgs=""
+ok_cfgs=""
+fail_cfgs=""
+
+skip_cfgs=""
+
+if [ 1 -eq "$early_check" ]; then
+	stage="early"
+else
+	stage="late"
+fi
+
+
+for cfg in $(echo "${configs}"); do
+	dir="$MC_CAVEATS_DATA_DIR/$cfg"
+
+	# We add cfg to the skip list first and then, if we do not skip it,
+	# we remove the configuration from the list.
+	skip_cfgs="$skip_cfgs $cfg"
+
+	[ -r "${dir}/readme" ] || {
+		debug "File 'readme' in ${dir} is not found, skipping"
+		continue
+	}
+
+	[ -r "${dir}/config" ] || {
+		debug "File 'config' in ${dir} is not found, skipping"
+		continue
+	}
+
+	cfg_model=
+	cfg_vendor=
+	cfg_path=
+	cfg_kvers=
+	cfg_kvers_early=
+	cfg_blacklist=
+	cfg_mc_min_ver_late=
+	cfg_disable=
+
+	while read -r key value; do
+		case "$key" in
+		model)
+			cfg_model="$value"
+			;;
+		vendor)
+			cfg_vendor="$value"
+			;;
+		path)
+			cfg_path="$cfg_path $value"
+			;;
+		kernel)
+			cfg_kvers="$cfg_kvers $value"
+			;;
+		kernel_early)
+			cfg_kvers_early="$cfg_kvers_early $value"
+			;;
+		mc_min_ver_late)
+			cfg_mc_min_ver_late="$value"
+			;;
+		disable)
+			cfg_disable="$cfg_disable $value "
+			;;
+		blacklist)
+			cfg_blacklist=1
+			break
+			;;
+		esac
+	done < "${dir}/config"
+
+	[ -z "${cfg_blacklist}" ] || \
+		cfg_blacklist=$(/bin/sed -n '/^blacklist$/,$p' "${dir}/config" |
+					/usr/bin/tail -n +2)
+
+	debug "${cfg}: model '$cfg_model', path '$cfg_path', kvers '$cfg_kvers'"
+	debug "${cfg}: blacklist '$cfg_blacklist'"
+
+	# Check for override files in the following order:
+	#  - disallow early/late specific caveat for specific kernel
+	#  - force early/late specific caveat for specific kernel
+	#  - disallow specific caveat for specific kernel
+	#  - force specific caveat for specific kernel
+	#
+	#  - disallow early/late specific caveat for any kernel
+	#  - disallow early/late any caveat for specific kernel
+	#  - force early/late specific caveat for any kernel
+	#  - force early/late any caveat for specific kernel
+	#  - disallow specific caveat for any kernel
+	#  - disallow any caveat for specific kernel
+	#  - force specific caveat for any kernel
+	#  - force any caveat for specific kernel
+	#
+	#  - disallow early/late everything
+	#  - force early/late everyhting
+	#  - disallow everything
+	#  - force everyhting
+	ignore_cfg=0
+	force_cfg=0
+	override_file=""
+	overrides="
+	0:$FW_DIR/$kver/disallow-$stage-$cfg
+	1:$FW_DIR/$kver/force-$stage-$cfg
+	0:$FW_DIR/$kver/disallow-$cfg
+	1:$FW_DIR/$kver/force-$cfg
+	0:$FW_DIR/$kver/disallow-$stage
+	0:$CFG_DIR/disallow-$stage-$cfg
+	1:$FW_DIR/$kver/force-$stage
+	1:$CFG_DIR/force-$stage-$cfg
+	0:$FW_DIR/$kver/disallow
+	0:$CFG_DIR/disallow-$cfg
+	1:$FW_DIR/$kver/force
+	1:$CFG_DIR/force-$cfg
+	0:$CFG_DIR/disallow-$stage
+	1:$CFG_DIR/force-$stage
+	0:$CFG_DIR/disallow
+	1:$CFG_DIR/force"
+	for o in $(echo "$overrides"); do
+		o_force=${o%%:*}
+		override_file=${o#$o_force:}
+
+		[ -e "$override_file" ] || continue
+
+		if [ 0 -eq "$o_force" ]; then
+			ignore_cfg=1
+		else
+			force_cfg=1
+		fi
+
+		break
+	done
+
+	[ 0 -eq "$ignore_cfg" ] || {
+		debug "Configuration \"$cfg\" is ignored due to presence of" \
+		      "\"$override_file\"."
+		continue
+	}
+
+	# Check model if model filter is enabled
+	if [ 1 -eq "$match_model" -a  -n "$cfg_model" ]; then
+		[ "x$cpu_model" = "x$cfg_model" ] || {
+			debug "Current CPU model '$cpu_model' doesn't" \
+			      "match configuration CPU model '$cfg_model'," \
+			      "skipping"
+			continue
+		}
+	fi
+
+	# Check paths if model filter is enabled
+	if [ 1 -eq "$match_model" -a  -n "$cfg_path" ]; then
+		cpu_mc_path="$MC_CAVEATS_DATA_DIR/$cfg/$(get_mc_path \
+			"$cpu_vendor" "${cpu_model#* }")"
+		cfg_mc_present=0
+
+		for p in $(printf "%s" "$cfg_path"); do
+			find "$MC_CAVEATS_DATA_DIR/$cfg" \
+				-path "$MC_CAVEATS_DATA_DIR/$cfg/$p" -print0 \
+			    | grep -zFxq "$cpu_mc_path" \
+			    || continue
+
+			cfg_mc_present=1
+		done
+
+		[ 1 = "$cfg_mc_present" ] || {
+			debug "No matching microcode files in '$cfg_path'" \
+			      "for CPU model '$cpu_model', skipping"
+			continue
+		}
+	fi
+
+	# Check vendor if model filter is enabled
+	if [ 1 -eq "$match_model" -a  -n "$cfg_vendor" ]; then
+		[ "x$cpu_vendor" = "x$cfg_vendor" ] || {
+			debug "Current CPU vendor '$cpu_vendor' doesn't" \
+			      "match configuration CPU vendor '$cfg_vendor'," \
+			      "skipping"
+			continue
+		}
+	fi
+
+	# Check configuration files
+
+	ret_cfgs="$ret_cfgs $cfg"
+	ret_paths="$ret_paths $cfg_path"
+	skip_cfgs="${skip_cfgs% $cfg}"
+
+	[ 0 -eq "$force_cfg" ] || {
+		debug "Checks for configuration \"$cfg\" are ignored due to" \
+		      "presence of \"$override_file\"."
+
+		ok_cfgs="$ok_cfgs $cfg"
+		ok_paths="$ok_paths $cfg_path"
+
+		continue
+	}
+
+	[ "x${cfg_disable%%* $stage *}" = "x$cfg_disable" ] || {
+		debug "${cfg}: caveat is disabled in configuration"
+		fail
+		continue
+	}
+
+	# Check late load kernel version
+	if [ 1 -ne "$early_check" -a -n "$cfg_kvers" ]; then
+		check_kver "$kver" $cfg_kvers || {
+			debug "${cfg}: late load kernel version check for" \
+			      " '$kver' against '$cfg_kvers' failed"
+			fail
+			continue
+		}
+	fi
+
+	# Check early load kernel version
+	if [ 0 -ne "$early_check" -a -n "$cfg_kvers_early" ]; then
+		check_kver "$kver" $cfg_kvers_early || {
+			debug "${cfg}: early load kernel version check for" \
+			      "'$kver' against '$cfg_kvers_early' failed"
+			fail
+			continue
+		}
+	fi
+
+	# Check model blacklist
+	if [ -n "$cfg_blacklist" ]; then
+		echo "$cfg_blacklist" | /bin/grep -vqFx "${cpu_model_name}" || {
+			debug "${cfg}: model '${cpu_model_name}' is blacklisted"
+			fail
+			continue
+		}
+	fi
+
+	# Check current microcode version for the late update
+	if [ -n "$cfg_mc_min_ver_late" -a 1 -ne "$early_check" -a \
+	   "x$cpu_model" = "x$cfg_model" ]; then
+		cpu_mc_ver="$(get_mc_ver)"
+
+		[ 1 -eq $((cpu_mc_ver >= cfg_mc_min_ver_late)) ] || {
+			debug "${cfg}: CPU microcode version $cpu_mc_ver" \
+			      "failed check (should be at least" \
+			      "${cfg_mc_min_ver_late})"
+			fail
+			continue
+		}
+	fi
+
+	ok_cfgs="$ok_cfgs $cfg"
+	ok_paths="$ok_paths $cfg_path"
+done
+
+echo "cfgs$ret_cfgs"
+echo "skip_cfgs$skip_cfgs"
+echo "paths$ret_paths"
+echo "ok_cfgs$ok_cfgs"
+echo "ok_paths$ok_paths"
+echo "fail_cfgs$fail_cfgs"
+echo "fail_paths$fail_paths"
+
+exit $ret

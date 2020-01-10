@@ -1,0 +1,16 @@
+Do not extract intel-ucode-with-caveats into the same directory as it needs
+special handling.
+Index: microcode_ctl-2.1-18/Makefile
+===================================================================
+--- microcode_ctl-2.1-18.orig/Makefile	2018-07-09 08:55:53.000000000 +0200
++++ microcode_ctl-2.1-18/Makefile	2018-07-20 17:52:34.767187807 +0200
+@@ -21,8 +21,7 @@
+ MICDIRINTEL     = $(MICDIR)/intel-ucode
+ 
+ all:
+-	tar xf $(MICROCODE_INTEL) ./intel-ucode/* ./intel-ucode-with-caveats/* \
+-	       	--one-top-level=intel-ucode --strip-components=2 --backup=simple
++	tar -xf $(MICROCODE_INTEL) ./intel-ucode
+ 
+ clean:
+ 	rm -rf intel-ucode

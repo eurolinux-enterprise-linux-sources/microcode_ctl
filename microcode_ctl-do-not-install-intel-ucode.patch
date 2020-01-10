@@ -1,0 +1,20 @@
+Index: microcode_ctl-2.1-18/Makefile
+===================================================================
+--- microcode_ctl-2.1-18.orig/Makefile	2018-08-16 04:48:33.466867302 +0200
++++ microcode_ctl-2.1-18/Makefile	2018-08-16 04:55:46.140598645 +0200
+@@ -29,14 +29,13 @@
+ 	$(CC) $(CFLAGS) -o $(PROGRAM) intel-microcode2ucode.c
+ 
+ clean:
+-	rm -rf $(PROGRAM) intel-ucode
++	rm -rf $(PROGRAM)
+ 
+ install:
+ 	$(INS) -d $(DESTDIR)$(INSDIR) $(DESTDIR)$(DOCDIR) \
+ 		$(DESTDIR)$(MICDIRINTEL)
+ 	$(INS) -m 755 $(PROGRAM) $(DESTDIR)$(INSDIR)
+ 	$(INS) -m 644 README $(DESTDIR)$(DOCDIR)
+-	$(INS) -m 644 intel-ucode/* $(DESTDIR)$(MICDIRINTEL)
+ 
+ uninstall:
+ 	rm -rf $(DESTDIR)$(INSDIR)/$(PROGRAM) \

@@ -1,0 +1,95 @@
+Fix most obvious intel-microcode2ucode buffer overruns.
+Index: microcode_ctl-2.1-19/intel-microcode2ucode.c
+===================================================================
+--- microcode_ctl-2.1-19.orig/intel-microcode2ucode.c	2018-08-20 04:32:26.803450076 +0200
++++ microcode_ctl-2.1-19/intel-microcode2ucode.c	2018-08-20 04:33:49.324661025 +0200
+@@ -47,16 +47,25 @@
+ 	char c[0];
+ };
+ 
++#define MAX_MICROCODE 4000000
++
+ int main(int argc, char *argv[])
+ {
+ 	char *filename = "/lib/firmware/microcode.dat";
+ 	FILE *input, *f;
+ 	char line[LINE_MAX];
+-	char buf[4000000];
++	char *buf = NULL;
+ 	union mcbuf *mc;
+ 	size_t bufsize, count, start;
+ 	int rc = EXIT_SUCCESS;
+ 
++	buf = malloc(MAX_MICROCODE);
++	if (!buf) {
++		printf("can't allocate buffer\n");
++		rc = EXIT_FAILURE;
++		goto out;
++	}
++
+ 	if (argv[1] != NULL)
+ 		filename = argv[1];
+ 
+@@ -74,6 +83,12 @@
+ 	count = 0;
+ 	mc = (union mcbuf *) buf;
+ 	while (fgets(line, sizeof(line), input) != NULL) {
++		if ((count + 3) >= (MAX_MICROCODE / sizeof(mc->i[0]))) {
++			printf("input file is too big");
++			rc = EXIT_FAILURE;
++			goto out;
++		}
++
+ 		if (sscanf(line, "%x, %x, %x, %x",
+ 		    &mc->i[count],
+ 		    &mc->i[count + 1],
+@@ -102,6 +117,10 @@
+ 		unsigned int family, model, stepping;
+ 		unsigned int year, month, day;
+ 
++		if ((start > bufsize) ||
++		    ((bufsize - start) < sizeof(struct microcode_header_intel)))
++			goto out;
++
+ 		mc = (union mcbuf *) &buf[start];
+ 
+ 		if (mc->hdr.totalsize)
+@@ -109,8 +128,12 @@
+ 		else
+ 			size = 2000 + sizeof(struct microcode_header_intel);
+ 
++		if (size > (bufsize - start))
++			goto out;
++
+ 		if (mc->hdr.ldrver != 1 || mc->hdr.hdrver != 1) {
+-			printf("unknown version/format:\n");
++			printf("unknown version/format: %d/%d\n",
++			       mc->hdr.ldrver, mc->hdr.hdrver);
+ 			rc = EXIT_FAILURE;
+ 			break;
+ 		}
+@@ -135,7 +158,11 @@
+ 		month = mc->hdr.date >> 24;
+ 		day = (mc->hdr.date >> 16) & 0xff;
+ 
+-		asprintf(&filename, "intel-ucode/%02x-%02x-%02x", family, model, stepping);
++		if (asprintf(&filename, "intel-ucode/%02x-%02x-%02x", family,
++		    model, stepping) == -1) {
++			printf("Failed to generate ucode filename\n");
++			goto out;
++		}
+ 		printf("\n");
+ 		printf("%s\n", filename);
+ 		printf("signature: 0x%02x\n", mc->hdr.sig);
+@@ -164,6 +191,11 @@
+ 	}
+ 	printf("\n");
+ 
++	if (start != bufsize)
++		printf("Finished parsing at byte %zu of %zu\n", start, bufsize);
++
+  out:
++	free(buf);
++
+ 	return rc;
+ }

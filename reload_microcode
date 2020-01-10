@@ -1,0 +1,22 @@
+#! /bin/bash -efu
+
+# Trigger microcode reload with additional check for BDW-EP that can have
+# microcode reloaded only in case kernel has specific patches.
+#
+# SPDX-License-Identifier: CC0-1.0
+
+CHECK_CAVEATS=/usr/libexec/microcode_ctl/check_caveats
+IGNORE_HYPERVISOR="/etc/microcode_ctl/ignore-hypervisor-flag"
+
+[ -e "$IGNORE_HYPERVISOR" ] || {
+	if grep -q '^flags[[:space:]]*:.* hypervisor\( .*\)\?$' /proc/cpuinfo
+	then
+		exit 0
+	fi
+}
+
+"$CHECK_CAVEATS" -m > /dev/null || exit 0
+
+echo 2>/dev/null 1 > /sys/devices/system/cpu/microcode/reload || :
+
+exit 0

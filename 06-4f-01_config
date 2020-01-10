@@ -1,0 +1,21 @@
+model GenuineIntel 06-4f-01
+path intel-ucode/06-4f-01
+kernel 4.17.0
+kernel 3.10.0-894
+kernel 3.10.0-862.6.1
+kernel 3.10.0-693.35.1
+kernel 3.10.0-514.52.1
+kernel 3.10.0-327.70.1
+kernel 2.6.32-754.1.1
+kernel 2.6.32-573.58.1
+kernel 2.6.32-504.71.1
+kernel 2.6.32-431.90.1
+kernel 2.6.32-358.90.1
+kernel_early 4.10.0
+kernel_early 3.10.0-930
+kernel_early 3.10.0-862.14.1
+kernel_early 3.10.0-693.38.1
+kernel_early 3.10.0-514.57.1
+kernel_early 3.10.0-327.73.1
+mc_min_ver_late 0xb000019
+disable early late

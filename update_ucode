@@ -1,0 +1,290 @@
+#! /bin/bash -eu
+
+# Maintain kernel-version-specific symlinks in /lib/firmware based on
+# configuration present in /usr/share/microcode_ctl/ucode_with_caveats.
+#
+# SPDX-License-Identifier: CC0-1.0
+
+usage()
+{
+	echo "Usage: update_ucode [--action {add|remove|refresh|list}]" \
+	     "[--kernel KERNELVER]* [--verbose] [--dry-run]" \
+	     "[--cleanup intel_ucode caveats_ucode]" \
+	     "[--skip-common] [--skip-kernel-specific]" >&2
+}
+
+debug() { [ 0 = "$verbose" ] || echo "$*" >&2; }
+
+MC_DIR=/usr/share/microcode_ctl
+INTEL_UCODE_DIR=intel-ucode
+DATA_DIR=/usr/share/microcode_ctl/ucode_with_caveats
+FW_DIR=/lib/firmware
+check_caveats=/usr/libexec/microcode_ctl/check_caveats
+
+action=refresh
+kernel=
+verbose=0
+verbose_opt=
+dry_run=0
+remove_cleanup=0
+cleanup_intel=
+cleanup_caveats=
+skip_common=0
+skip_caveats=0
+
+while [ 1 -le "$#" ]; do
+	case "$1" in
+	-C|--skip-common)
+		skip_common=1
+		;;
+	-K|--skip-kernel-specific)
+		skip_caveats=1
+		;;
+	-a|--action)
+		shift
+		action="$1"
+		;;
+	-k|--kernel)
+		shift
+		kernel="$kernel $1"
+		;;
+	-v|--verbose)
+		verbose=1
+		verbose_opt="-v"
+		;;
+	-n|--dry-run)
+		dry_run=1
+		;;
+	-c|--cleanup)
+		remove_cleanup=1
+		shift
+		cleanup_intel="$1"
+		shift
+		cleanup_caveats="$1"
+		;;
+	*)
+		echo "Unknown argument \"$1\"" >&2
+		usage
+		exit 1
+	esac
+	shift
+done
+
+cmd=
+[ 0 -eq "$dry_run" ] || cmd=echo
+
+case "$action" in
+add|remove|refresh|list)
+	# Scan all directories in FW_DIR and all existing kernels
+	if [ -z "$kernel" ]; then
+		debug "No kernel versions provided, scanning..."
+
+		kvers=$(find /lib/modules/ -name '[2-9].*' -print)
+		for k_dir in $kvers; do
+			k="${k_dir#/lib/modules/}"
+			[ ! -e "/boot/symvers-$k.gz" ] || {
+				debug "  Adding $k (from /lib/modules)"
+				kernel="$kernel $k"
+			}
+		done
+
+		kvers=$(find /lib/firmware/ -name '[2-9].*' -print)
+		for k_dir in $kvers; do
+			k="${k_dir#/lib/firmware/}"
+			[ ! -d "$k_dir" ] || {
+				debug "  Adding $k (from /lib/firmware)"
+				kernel="$kernel $k"
+			}
+		done
+
+		kernel=$(printf "%s" "$kernel" | xargs -n 1 | sort -u)
+	fi
+	;;
+*)
+	echo "Unknown action \"$action\"" >&2
+	usage
+	exit 1
+	;;
+esac
+
+# Generic part: managing intel ucode
+debug "Running action \"$action\" on common Intel microcode directory"
+while :; do
+	[ 0 -eq "$skip_common" ] || break
+
+	[ ! -e "/etc/microcode_ctl/intel-ucode-disallow" ] || {
+		debug "  Skipping \"$i\":" \
+		      "\"/etc/microcode_ctl/intel-ucode-disallow\"" \
+		      "present"
+		break
+	}
+	[ ! -e "$FW_DIR/intel-ucode-disallow" ] || {
+		debug "  Found \"$FW_DIR/intel-ucode-disallow\"," \
+		      "skipping"
+		break
+	}
+
+	# Removing old files
+	case "$action" in
+	refresh|remove|list)
+		debug "  Removing old files from ${FW_DIR}/${INTEL_UCODE_DIR}"
+		if [ 0 = "$remove_cleanup" ]; then
+			find "${MC_DIR}/${INTEL_UCODE_DIR}" \
+				-maxdepth 1 -mindepth 1 \
+				-type f -printf '%f\n'
+		else
+			cat "$cleanup_intel"
+		fi | while read -r fname; do
+			name="${FW_DIR}/${INTEL_UCODE_DIR}/${fname}"
+
+			# Needed in case we downgrade to a version where
+			# no symlinks in /lib/firmware were used
+			if [ 1 = "$remove_cleanup" ]; then
+				[ -L "$name" ] || continue
+			fi
+
+			[ "xlist" != "x$action" ] || {
+				echo "$name"
+				continue
+			}
+
+			$cmd rm -f $verbose_opt "$name"
+		done
+		[ "xlist" = "x$action" ] || {
+			$cmd rmdir -p $verbose_opt \
+				"${FW_DIR}/${INTEL_UCODE_DIR}" 2>/dev/null \
+				|| true
+		}
+		;;
+	esac
+
+	# Adding new ones
+	case "$action" in
+	add|refresh)
+		debug "  Creating symlinks in ${FW_DIR}/${INTEL_UCODE_DIR}"
+		$cmd mkdir -p $verbose_opt "${FW_DIR}/${INTEL_UCODE_DIR}"
+		$cmd find "${MC_DIR}/${INTEL_UCODE_DIR}" -maxdepth 1 -mindepth 1 \
+			-type f -exec bash -c 'ln -fs '"$verbose_opt"' '\''{}'\'' \
+				"'"${FW_DIR}/${INTEL_UCODE_DIR}/"'$(basename '\''{}'\'')"' \;
+		;;
+	esac
+
+	break
+done
+
+debug "Running action \"$action\" on kernels $kernel"
+
+if [ 0 = "$remove_cleanup" ]; then
+	ls "$DATA_DIR"
+else
+	cat "$cleanup_caveats"
+fi | while read -r i; do
+	[ 0 -eq "$skip_caveats" ] || break
+
+	debug "Processing data directory \"$i\"..."
+
+	for k in $(echo "$kernel"); do
+		debug "    Processing kernel version \"$k\""
+		{
+			out=$($check_caveats -k "$k" -c "$i" $verbose_opt)
+			ret="$?"
+		} || :
+		paths=$(printf "%s" "$out" | sed -n 's/^paths //p')
+		ignore=$(printf "%s" "$out" | sed -n 's/^skip_cfgs //p')
+
+		[ -z "$ignore" ] || {
+			debug "      Configuration is ignored, skipping"
+			continue
+		}
+
+		case "$action" in
+		remove|refresh|list)
+			[ "xlist" = "x$action" ] || \
+				debug "    Removing \"$paths\" (part of $action)..."
+
+			for p in $(printf "%s" "$paths"); do
+				find "$DATA_DIR/$i" -path "$DATA_DIR/$i/$p" \
+					-printf "%P\n"
+			done | while read -r path; do
+				[ -e "$FW_DIR/$k/readme-$i" ] || {
+					debug "      \"$FW_DIR/$k/readme-$i\"" \
+					      "is not found, skipping" \
+					      "\"$paths\" removal"
+
+					break
+				}
+
+				if [ "xlist" = "x$action" ]; then
+					echo "$FW_DIR/$k/$path"
+				else
+					debug "      Removing \"$FW_DIR/$k/$path\""
+					$cmd rm -f $verbose_opt "$FW_DIR/$k/$path"
+					$cmd rmdir -p $verbose_opt \
+						"$FW_DIR/$k/$(dirname $path)" 2>/dev/null \
+						|| true
+				fi
+			done
+
+			if [ -e "$FW_DIR/$k/readme-$i" ]; then
+				if [ "xlist" = "x$action" ]; then
+					echo "$FW_DIR/$k/readme-$i"
+				else
+					$cmd rm -f $verbose_opt \
+						"$FW_DIR/$k/readme-$i"
+					$cmd rmdir -p $verbose_opt \
+						"$FW_DIR/$k" 2>/dev/null || true
+				fi
+			fi
+			;;
+		esac
+
+		[ 0 -eq "$ret" ] || {
+			debug "    Checking for caveats failed" \
+			      "(kernel version \"$k\"), skipping"
+			continue
+		}
+
+		[ -n "$paths" ] || {
+			debug "    List of paths to add is empty, skipping"
+			continue
+		}
+
+		case "$action" in
+		add|refresh)
+			debug "    Adding $paths (part of $action)..."
+
+			[ -e "/boot/symvers-$k.gz" ] || {
+				debug "      \"/boot/symvers-$k.gz\"" \
+				      "does not exist, skipping"
+				continue
+			}
+
+			for p in $(printf "%s" "$paths"); do
+				find "$DATA_DIR/$i" -path "$DATA_DIR/$i/$p" \
+					-printf "%P\n"
+			done | while read -r path; do
+				[ ! -e "$FW_DIR/$k/$path" ] || {
+					debug "      $FW_DIR/$k/$path already" \
+					      "exists, skipping"
+					continue
+				}
+
+				debug "      Adding \"$FW_DIR/$k/$path\""
+				$cmd mkdir -p $verbose_opt \
+					"$(dirname "$FW_DIR/$k/$path")"
+				$cmd ln -fs $verbose_opt "$DATA_DIR/$i/$path" \
+					"$FW_DIR/$k/$path"
+			done
+
+			if [ -e "$FW_DIR/$k/readme-$i" ]; then
+				debug "        $FW_DIR/$k/readme-$i already" \
+				      "exists, skipping creation"
+			else
+				$cmd cp $verbose_opt "$DATA_DIR/$i/readme" \
+					"$FW_DIR/$k/readme-$i"
+			fi
+			;;
+		remove)
+		esac
+	done
+done

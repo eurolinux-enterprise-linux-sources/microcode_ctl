@@ -1,0 +1,4 @@
+microcode update for Intel Broadwell-EP/EX (BDX-ML B/M/R0; family 6, model 79,
+stepping 1; CPUID 0x406f1) CPUs is disabled as it may cause system instability.
+Please refer to /usr/share/doc/microcode_ctl/caveats/06-4f-01_readme
+and /usr/share/doc/microcode_ctl/README.caveats for details.

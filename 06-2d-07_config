@@ -1,0 +1,3 @@
+model GenuineIntel 06-2d-07
+path intel-ucode/06-2d-07
+disable early late

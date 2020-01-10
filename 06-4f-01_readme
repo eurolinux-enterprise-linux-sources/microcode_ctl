@@ -49,6 +49,7 @@ kernels, please create a file
 "/etc/microcode_ctl/ucode_with_caveats/force-late-intel-06-4f-01"
 and run "/usr/libexec/microcode_ctl/update_ucode":
 
+    mkdir -p /etc/microcode_ctl/ucode_with_caveats
     touch /etc/microcode_ctl/ucode_with_caveats/force-late-intel-06-4f-01
     /usr/libexec/microcode_ctl/update_ucode
 
@@ -64,10 +65,11 @@ For enforcing early load of this microcode for all kernels, please
 create a file "/etc/microcode_ctl/ucode_with_caveats/force-early-intel-06-4f-01"
 and run dracut -f --regenerate-all:
 
+    mkdir -p /etc/microcode_ctl/ucode_with_caveats
     touch /etc/microcode_ctl/ucode_with_caveats/force-early-intel-06-4f-01
     dracut -f --regenerate-all
 
-If you want avoid removal of the microcode file during cleanup performed by
+If you want to avoid removal of the microcode file during cleanup performed by
 /usr/libexec/microcode_ctl/update_ucode, please remove the corresponding readme
 file (/lib/firmware/<kernel_version>/readme-intel-06-4f-01).
 

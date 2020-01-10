@@ -1,0 +1,10 @@
+This kernel doesn't handle early microcode load properly (it tries to load
+microcode even in virtualised environment, which may lead to a panic on some
+hypervisors), thus the microcode files have not been added to the initramfs
+image.  Please update your kernel to one of the following:
+  RHEL 7.5: kernel-3.10.0-862.14.1 or newer;
+  RHEL 7.4: kernel-3.10.0-693.38.1 or newer;
+  RHEL 7.3: kernel-3.10.0-514.57.1 or newer;
+  RHEL 7.2: kernel-3.10.0-327.73.1 or newer.
+Please refer to /usr/share/doc/microcode_ctl/caveats/intel_readme
+and /usr/share/doc/microcode_ctl/README.caveats for details.

@@ -392,8 +392,8 @@ when a microcode update performed on a kernel that contains those changes.
 As a result, microcode update for this CPU model is disabled by default;
 the microcode file, however, is still shipped as a part of microcode_ctl
 package and can be used for performing a microcode update if it is enforced
-via the aforementioned overridden. (See sections "check_caveats script"
-and "reload_microcode script" for details).
+via the aforementioned overriddes. (See sections "check_caveats script"
+and "reload_microcode script" for details.)
 
 Affected microcode: intel-ucode/06-4f-01.
 
@@ -434,12 +434,28 @@ Minimum versions of the kernel package that contain the fix:
  - RHEL 7.2: 3.10.0-327.73.1
 
 
+Intel Sandy Bridge-E/EN/EP caveat
+---------------------------------
+MDS-related microcode revision 0x718 for Intel Sandy Bridge-E/EN/EP
+(SNB-EP, family 6, model 45, stepping 7) may lead to system instability.
+In order to address this, this microcode update is not used and the previous
+microcode revision is provided instead by default; the microcode file, however,
+is still shipped as part of microcode_ctl package and can be used for performing
+a microcode update if it is enforced via the aforementioned overriddes. (See
+sections "check_caveats script" and "reload_microcode script" for details.)
+
+Affected microcode: intel-ucode/06-2d-07.
+
+Mitigation: previously published microcode revision 0x714 is used by default.
+
+
+
 Additional information
 ======================
-Red Hat provides updated microcode, developed by our microprocessor
-partners, as a customer convenience.  Please contact your hardware vendor
-to determine whether more recent BIOS/firmware updates are recommended
-because additional improvements may be available.
+Red Hat provides updated microcode, developed by its microprocessor partners,
+as a customer convenience.  Please contact your hardware vendor to determine
+whether more recent BIOS/firmware updates are recommended because additional
+improvements may be available.
 
 Information regarding microcode revisions required for mitigating specific
 microarchitectural side-channel attacks is available in the following

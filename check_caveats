@@ -10,8 +10,10 @@
 : ${CFG_DIR=/etc/microcode_ctl/ucode_with_caveats}
 
 usage() {
-	echo 'Usage: check_caveats [-e] [-k TARGET_KVER] [-c CONFIG] [-m] [-v]'
+	echo 'Usage: check_caveats [-d] [-e] [-k TARGET_KVER] [-c CONFIG]'
+	echo '                     [-m] [-v]'
 	echo
+	echo '   -d - enables disclaimer printing mode'
 	echo '   -e - check for early microcode load possibility (instead of'
 	echo '        late microcode load)'
 	echo '   -k - target version to check against, $(uname -r) is used'
@@ -178,6 +180,9 @@ fail()
 
 	fail_cfgs="$fail_cfgs $cfg"
 	fail_paths="$fail_paths $cfg_path"
+
+	[ 0 -eq "$print_disclaimers" ] || [ ! -e "${dir}/disclaimer" ] \
+		|| cat "${dir}/disclaimer"
 }
 
 #check_kver "$@"
@@ -188,11 +193,16 @@ configs=
 kver=$(/bin/uname -r)
 verbose=0
 early_check=0
+print_disclaimers=0
 
 ret=0
 
-while getopts "ek:c:mv" opt; do
+while getopts "dek:c:mv" opt; do
 	case "${opt}" in
+	d)
+		print_disclaimers=1
+		early_check=2
+		;;
 	e)
 		early_check=1
 		;;
@@ -471,6 +481,8 @@ for cfg in $(echo "${configs}"); do
 	ok_cfgs="$ok_cfgs $cfg"
 	ok_paths="$ok_paths $cfg_path"
 done
+
+[ 0 -eq "$print_disclaimers" ] || exit 0
 
 echo "cfgs$ret_cfgs"
 echo "skip_cfgs$skip_cfgs"

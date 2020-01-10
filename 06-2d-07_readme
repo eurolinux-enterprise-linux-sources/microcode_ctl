@@ -1,0 +1,55 @@
+Intel Sandy Bridge-E/EN/EP (SNB-EP, family 6, model 45, stepping 7) has issues
+with MDS-related microcode update that may lead to a system hang after
+a microcode update. In order to address this, microcode update
+to the MDS-related revision 0x718 has been disabled, and the previously
+published microcode revision 0x714 is used by default for the OS-driven
+microcode update.
+
+For the reference, SHA1 checksums of 06-2d-07 microcode files containing
+microcode revisions in question are listed below:
+ * 06-2d-07, revision 0x714: bcf2173cd3dd499c37defbc2533703cfa6ec2430
+ * 06-2d-07, revision 0x718: 837cfebbfc09b911151dfd179082ad99cf87e85d
+
+Please contact your system vendor for a BIOS/firmware update that contains
+the latest microcode version. For the information regarding microcode versions
+required for mitigating specific side-channel cache attacks, please refer
+to the following knowledge base articles:
+ * CVE-2017-5715 ("Spectre"):
+   https://access.redhat.com/articles/3436091
+ * CVE-2018-3639 ("Speculative Store Bypass"):
+   https://access.redhat.com/articles/3540901
+ * CVE-2018-3620, CVE-2018-3646 ("L1 Terminal Fault Attack"):
+   https://access.redhat.com/articles/3562741
+ * CVE-2018-12130, CVE-2018-12126, CVE-2018-12127, and CVE-2019-11091
+   ("Microarchitectural Data Sampling"):
+   https://access.redhat.com/articles/4138151
+
+The information regarding enforcing microcode load is provided below.
+
+To enforce usage of this microcode revision, please create a file
+"force-intel-06-2d-07" inside /lib/firmware/<kernel_version> directory,
+run "/usr/libexec/microcode_ctl/update_ucode" to add it to firmware
+directory where microcode will be available for late microcode update,
+and run "dracut -f --kver 3.10.0-862.9.1", so initramfs for this version
+is regenerated and the microcode can be loaded early:
+
+    touch /lib/firmware/3.10.0-862.9.1/force-intel-06-2d-07
+    /usr/libexec/microcode_ctl/update_ucode
+    dracut -f --kver 3.10.0-862.9.1
+
+After that, it is possible to perform a late microcode update by executing
+"/usr/libexec/microcode_ctl/reload_microcode" or by writing value "1" to
+"/sys/devices/system/cpu/microcode/reload" directly.
+
+To enforce addition of this microcode for all kernels, please create a file
+"/etc/microcode_ctl/ucode_with_caveats/force-intel-06-2d-07", run
+"/usr/libexec/microcode_ctl/update_ucode" for enabling late microcode updates,
+and "dracut -f --regenerate-all" for enabling early microcode updates:
+
+    mkdir -p /etc/microcode_ctl/ucode_with_caveats
+    touch /etc/microcode_ctl/ucode_with_caveats/force-intel-06-2d-07
+    /usr/libexec/microcode_ctl/update_ucode
+    dracut -f --regenerate-all
+
+Please refer to /usr/share/doc/microcode_ctl/README.caveats for additional
+information.

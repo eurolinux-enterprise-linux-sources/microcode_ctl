@@ -1,0 +1,4 @@
+MDS-related microcode update for some Intel Sandy Bridge-E/EN/EP (family 6,
+model 45, stepping 7; CPUID 0x206d7) CPUs is disabled as it may cause system
+hangs. Please refer to /usr/share/doc/microcode_ctl/caveats/06-2d-07_readme
+and /usr/share/doc/microcode_ctl/README.caveats for details.

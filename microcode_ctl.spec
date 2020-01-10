@@ -1,45 +1,80 @@
 %define upstream_version 2.1-18
-%define intel_ucode_version 20190618
+%define intel_ucode_version 20190918
 %define intel_ucode_file_id 28727
+
+%define caveat_dir %{_datarootdir}/microcode_ctl/ucode_with_caveats
 %define microcode_ctl_libexec %{_libexecdir}/microcode_ctl
+
 %define update_ucode %{microcode_ctl_libexec}/update_ucode
 %define check_caveats %{microcode_ctl_libexec}/check_caveats
 %define reload_microcode %{microcode_ctl_libexec}/reload_microcode
+
 %define dracutlibdir %{_prefix}/lib/dracut
+
 %define i_m2u_man intel-microcode2ucode.8
+
+# In microcode_ctl, documentation directory is unversioned historically.
+# In RHEL 8 spec, %{_pkgdocdir} is used as installation destination; however,
+# it is unversioned only since Fedora 20, per #986871,
+# and not in Fedora 18/19-based RHEL 7.
+%define _pkgdocdir %{_docdir}/%{name}
 
 Summary:        Tool to transform and deploy CPU microcode update for x86.
 Name:           microcode_ctl
 Version:        2.1
-Release:        47.5%{?dist}
+Release:        53.2%{?dist}
 Epoch:          2
 Group:          System Environment/Base
 License:        GPLv2+ and Redistributable, no modification permitted
 URL:            https://pagure.io/microcode_ctl
 Source0:        https://releases.pagure.org/microcode_ctl/%{name}-%{upstream_version}.tar.xz
 Source1:        https://github.com/intel/Intel-Linux-Processor-Microcode-Data-Files/archive/microcode-%{intel_ucode_version}.tar.gz
+# (Pre-MDS) revision 0x714 of 06-2d-07 microcode
+Source2:        https://github.com/intel/Intel-Linux-Processor-Microcode-Data-Files/raw/microcode-20190514/intel-ucode/06-2d-07
 
-Source2:        microcode.service
 
-Source3:        01-microcode.conf
-Source4:        dracut_99microcode_ctl-fw_dir_override_module_init.sh
+# systemd unit
+Source10:       microcode.service
 
-Source5:        update_ucode
-Source6:        check_caveats
-Source7:        reload_microcode
+# dracut-related stuff
+Source20:       01-microcode.conf
+Source21:       99-microcode-override.conf
+Source22:       dracut_99microcode_ctl-fw_dir_override_module_init.sh
 
-Source9:        99-microcode-override.conf
+# libexec
+Source30:       update_ucode
+Source31:       check_caveats
+Source32:       reload_microcode
 
-Source10:       06-4f-01_readme
-Source11:       06-4f-01_config
+# docs
+Source40:       %{i_m2u_man}.in
+Source41:       README.caveats
 
-Source20:       intel_readme
-Source21:       intel_config
+## Caveats
+# BDW EP/EX
+# https://bugzilla.redhat.com/show_bug.cgi?id=1622180
+# https://bugzilla.redhat.com/show_bug.cgi?id=1623630
+# https://bugzilla.redhat.com/show_bug.cgi?id=1646383
+Source100:      06-4f-01_readme
+Source101:      06-4f-01_config
+Source102:      06-4f-01_disclaimer
 
-Source30:       README.caveats
-Source31:       %{i_m2u_man}.in
+# Unsafe early MC update inside VM:
+# https://bugzilla.redhat.com/show_bug.cgi?id=1596627
+Source110:      intel_readme
+Source111:      intel_config
+Source112:      intel_disclaimer
 
-Source100:      gen_provides.sh
+# SNB-EP (CPUID 0x206d7) post-MDS hangs
+# https://bugzilla.redhat.com/show_bug.cgi?id=1758382
+# https://github.com/intel/Intel-Linux-Processor-Microcode-Data-Files/issues/15
+Source120:      06-2d-07_readme
+Source121:      06-2d-07_config
+Source122:      06-2d-07_disclaimer
+
+
+# "Provides:" RPM tags generator
+Source200:      gen_provides.sh
 
 Patch1:         microcode_ctl-do-not-merge-ucode-with-caveats.patch
 Patch2:         microcode_ctl-revert-intel-microcode2ucode-removal.patch
@@ -57,7 +92,7 @@ Requires(postun): systemd
 Requires(posttrans): kernel
 
 %global _use_internal_dependency_generator 0
-%define __find_provides "%{SOURCE100}"
+%define __find_provides "%{SOURCE200}"
 
 %description
 The microcode_ctl utility is a companion to the microcode driver written
@@ -99,8 +134,12 @@ touch ghost_list
 tar xf "%{SOURCE1}" --wildcards --strip-components=1 \
 	\*/intel-ucode-with-caveats \*/license \*/releasenote
 
+# replacing SNB-EP (CPUID 0x206d7) microcode with pre-MDS version
+mv intel-ucode/06-2d-07 intel-ucode-with-caveats/
+cp "%{SOURCE2}" intel-ucode/
+
 # man page
-sed "%{SOURCE31}" \
+sed "%{SOURCE40}" \
 	-e "s/@DATE@/2019-05-09/g" \
 	-e "s/@VERSION@/%{version}-%{release}/g" \
 	-e "s|@MICROCODE_URL@|https://downloadcenter.intel.com/download/%{intel_ucode_file_id}|g" > "%{i_m2u_man}"
@@ -109,59 +148,83 @@ sed "%{SOURCE31}" \
 rm -rf %{buildroot}
 make DESTDIR=%{buildroot} PREFIX=%{_prefix} INSDIR=/usr/sbin MICDIR=/usr/share/microcode_ctl install clean
 
-mkdir -p %{buildroot}%{dracutlibdir}/dracut.conf.d
-mkdir -p %{buildroot}%{_unitdir}
-install -m 644 %{SOURCE2} -t %{buildroot}%{_unitdir}
-install -m 644 %{SOURCE3} %{SOURCE9} \
-	-t %{buildroot}%{dracutlibdir}/dracut.conf.d
+install -m 755 -d \
+	"%{buildroot}/%{_datarootdir}/microcode_ctl/intel-ucode" \
+	"%{buildroot}/%{caveat_dir}/" \
+	"%{buildroot}/etc/microcode_ctl/ucode_with_caveats/"
 
-mkdir -p "%{buildroot}%{dracutlibdir}/modules.d/99microcode_ctl-fw_dir_override"
-install -m 755 %{SOURCE4} \
-	%{buildroot}%{dracutlibdir}/modules.d/99microcode_ctl-fw_dir_override/module-setup.sh
+# systemd unit
+install -m 755 -d "%{buildroot}/%{_unitdir}"
+install -m 644 "%{SOURCE10}" -t "%{buildroot}/%{_unitdir}/"
+
+# dracut
+%define dracut_mod_dir "%{buildroot}/%{dracutlibdir}/modules.d/99microcode_ctl-fw_dir_override"
+install -m 755 -d \
+	"%{dracut_mod_dir}" \
+	"%{buildroot}/%{dracutlibdir}/dracut.conf.d/"
+install -m 644 "%{SOURCE20}" "%{SOURCE21}" \
+	-t "%{buildroot}/%{dracutlibdir}/dracut.conf.d/"
+install -m 755 "%{SOURCE22}" "%{dracut_mod_dir}/module-setup.sh"
 
 # Internal helper scripts
-mkdir -p %{buildroot}/%{microcode_ctl_libexec}
-install -m 755 %{SOURCE5} %{buildroot}/%{update_ucode}
-install -m 755 %{SOURCE6} %{buildroot}/%{check_caveats}
-install -m 755 %{SOURCE7} %{buildroot}/%{reload_microcode}
+install -m 755 -d "%{buildroot}/%{microcode_ctl_libexec}"
+install "%{SOURCE30}" "%{SOURCE31}" "%{SOURCE32}" \
+	-m 755 -t "%{buildroot}/%{microcode_ctl_libexec}"
+
+
+## Documentation
+install -m 755 -d "%{buildroot}/%{_pkgdocdir}/caveats"
 
 # caveats readme
-install -m 644 %{SOURCE30} -t %{buildroot}/usr/share/doc/microcode_ctl/
+install "%{SOURCE41}" \
+	-m 644 -t "%{buildroot}/%{_pkgdocdir}/"
 
 # Provide Intel microcode license, as it requires so
-install -m 644 license %{buildroot}/usr/share/doc/microcode_ctl/LICENSE.intel-ucode
+install -m 644 license \
+	"%{buildroot}/%{_pkgdocdir}/LICENSE.intel-ucode"
 
 # Provide release notes for Intel microcode
-install -m 644 releasenote %{buildroot}/usr/share/doc/microcode_ctl/RELEASE_NOTES.intel-ucode
+install -m 644 releasenote \
+	"%{buildroot}/%{_pkgdocdir}/RELEASE_NOTES.intel-ucode"
 
-# Handle ucode with caveats
-mkdir -p "%{buildroot}/usr/share/microcode_ctl/ucode_with_caveats/intel-06-4f-01/intel-ucode"
-install -m 644 intel-ucode-with-caveats/06-4f-01 \
-	-t %{buildroot}/usr/share/microcode_ctl/ucode_with_caveats/intel-06-4f-01/intel-ucode/
-install -m 644 %{SOURCE10} \
-	%{buildroot}/usr/share/microcode_ctl/ucode_with_caveats/intel-06-4f-01/readme
-install -m 644 %{SOURCE11} \
-	%{buildroot}/usr/share/microcode_ctl/ucode_with_caveats/intel-06-4f-01/config
-
-mkdir -p "%{buildroot}/usr/share/microcode_ctl/ucode_with_caveats/intel/intel-ucode"
-install -m 644 intel-ucode/* \
-	-t %{buildroot}/usr/share/microcode_ctl/ucode_with_caveats/intel/intel-ucode/
-install -m 644 %{SOURCE20} \
-	%{buildroot}/usr/share/microcode_ctl/ucode_with_caveats/intel/readme
-install -m 644 %{SOURCE21} \
-	%{buildroot}/usr/share/microcode_ctl/ucode_with_caveats/intel/config
-
-# Install caveat readme files to doc
-mkdir -p "%{buildroot}/usr/share/doc/microcode_ctl/caveats"
-install -m 644 "%{SOURCE10}" "%{SOURCE20}" \
-	-t "%{buildroot}/usr/share/doc/microcode_ctl/caveats/"
+# caveats
+install -m 644 "%{SOURCE100}" "%{SOURCE110}" "%{SOURCE120}" \
+	-t "%{buildroot}/%{_pkgdocdir}/caveats/"
 
 # Man page
 install -m 755 -d %{buildroot}/%{_mandir}/man8/
 install -m 644 "%{i_m2u_man}" -t %{buildroot}/%{_mandir}/man8/
 
+
+## Caveat data
+
+# BDW caveat
+%define bdw_inst_dir %{buildroot}/%{caveat_dir}/intel-06-4f-01/
+install -m 755 -d "%{bdw_inst_dir}/intel-ucode"
+install -m 644 intel-ucode-with-caveats/06-4f-01 -t "%{bdw_inst_dir}/intel-ucode/"
+install -m 644 "%{SOURCE100}" "%{bdw_inst_dir}/readme"
+install -m 644 "%{SOURCE101}" "%{bdw_inst_dir}/config"
+install -m 644 "%{SOURCE102}" "%{bdw_inst_dir}/disclaimer"
+
+# Early update caveat
+%define intel_inst_dir %{buildroot}/%{caveat_dir}/intel/
+install -m 755 -d "%{intel_inst_dir}/intel-ucode"
+install -m 644 intel-ucode/* -t "%{intel_inst_dir}/intel-ucode/"
+install -m 644 "%{SOURCE110}" "%{intel_inst_dir}/readme"
+install -m 644 "%{SOURCE111}" "%{intel_inst_dir}/config"
+install -m 644 "%{SOURCE112}" "%{intel_inst_dir}/disclaimer"
+
+# SNB caveat
+%define snb_inst_dir %{buildroot}/%{caveat_dir}/intel-06-2d-07/
+install -m 755 -d "%{snb_inst_dir}/intel-ucode"
+install -m 644 intel-ucode-with-caveats/06-2d-07 -t "%{snb_inst_dir}/intel-ucode/"
+install -m 644 "%{SOURCE120}" "%{snb_inst_dir}/readme"
+install -m 644 "%{SOURCE121}" "%{snb_inst_dir}/config"
+install -m 644 "%{SOURCE122}" "%{snb_inst_dir}/disclaimer"
+
 # Cleanup
 rm -f intel-ucode-with-caveats/06-4f-01
+rm -f intel-ucode-with-caveats/06-2d-07
 rmdir intel-ucode-with-caveats
 rm -rf intel-ucode
 
@@ -169,6 +232,15 @@ rm -rf intel-ucode
 %systemd_post microcode.service
 %{update_ucode}
 %{reload_microcode}
+
+# send the message to syslog, so it gets recorded on /var/log
+if [ -e /usr/bin/logger ]; then
+	%{check_caveats} -m -d | /usr/bin/logger -p syslog.notice -t DISCLAIMER
+fi
+# also paste it over dmesg (some customers drop dmesg messages while
+# others keep them into /var/log for the later case, we'll have the
+# disclaimer recorded twice into system logs.
+%{check_caveats} -m -d > /dev/kmsg
 
 exit 0
 
@@ -270,35 +342,46 @@ rm -rf %{buildroot}
 /usr/sbin/intel-microcode2ucode
 %{microcode_ctl_libexec}
 /usr/share/microcode_ctl
-%{dracutlibdir}/modules.d/99microcode_ctl-fw_dir_override
+%{dracutlibdir}/modules.d/*
 %config(noreplace) %{dracutlibdir}/dracut.conf.d/*
 %{_unitdir}/microcode.service
-%doc /usr/share/doc/microcode_ctl/*
+%doc %{_pkgdocdir}
 %{_mandir}/man8/*
 
 
 %changelog
-* Wed Jun 19 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:2.1-47.5
-- Intel CPU microcode update to 20190618.
-- Resolves: #1722575.
+* Sun Oct 06 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:2.1-53.2
+- Do not update 06-2d-07 (SNB-E/EN/EP) to revision 0x718, use 0x714
+  by default.
 
-* Sun Jun 02 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:2.1-47.4
+* Thu Sep 19 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:2.1-53.1
+- Intel CPU microcode update to 20190918.
+- Add new disclaimer, generated based on relevant caveats.
+- Resolves: #1758572.
+
+* Wed Jun 19 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:2.1-53
+- Intel CPU microcode update to 20190618.
+- Resolves: #1717241.
+
+* Sun Jun 02 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:2.1-52
 - Remove disclaimer, as it is not as important now to justify kmsg/log
   pollution; its contents are partially adopted in README.caveats.
 
-* Wed May 29 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:2.1-47.3
+* Mon May 20 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:2.1-51
 - Intel CPU microcode update to 20190514a.
-- Resolves: #1714958.
+- Resolves: #1711941.
 
-* Fri May 10 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:2.1-47.2
+* Thu May 09 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:2.1-50
 - Intel CPU microcode update to 20190507_Public_DEMO.
-- Resolves: #1704374.
+- Resolves: #1697904.
 
-* Fri May 10 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:2.1-47.1
+* Mon Apr 15 2019 Eugene Syromiatnikov <esyr@redhat.com> - 2:2.1-49
 - Intel CPU microcode update to 20190312.
 - Add "Provides:" tags generation.
-- Fix %postun script.
-- Resolves: #1704374.
+- Resolves: #1697904.
+
+* Thu Sep 20 2018 Eugene Syromiatnikov <esyr@redhat.com> - 2:2.1-48
+- Fix %postun script (#1628629)
 
 * Wed Sep 05 2018 Eugene Syromiatnikov <esyr@redhat.com> - 2:2.1-47
 - Add 7.3.z kernel version to kernel_early configuration.

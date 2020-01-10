@@ -17,7 +17,8 @@ If you want to avoid early load of microcode for a specific kernel, please
 create "disallow-early-intel" file inside /lib/firmware/<kernel_version>
 directory and run dracut -f --kver "<kernel_version>":
 
-    touch /lib/firmware/3.10.0-862.9.1/disallow-early-intel
+    touch /lib/firmware/3.10.0-862.9.1/disallow-intel
+    /usr/libexec/microcode_ctl/update_ucode
     dracut -f --kver 3.10.0-862.9.1
 
 If you want to avoid early load of microcode for all kernels, please create
@@ -25,13 +26,14 @@ If you want to avoid early load of microcode for all kernels, please create
 directory and run dracut -f --regenerate-all:
 
     mkdir -p /etc/microcode_ctl/ucode_with_caveats
-    touch /etc/microcode_ctl/ucode_with_caveats/disallow-early-intel
-    dracut -f --regenerate-all
+    touch /etc/microcode_ctl/ucode_with_caveats/disallow-intel
+    dracut -f --kver 3.10.0-862.9.1
 
 If you want to enforce early load of microcode for a specific kernel, please
 create "force-early-intel" file inside /lib/firmware/<kernel_version> directory
 and run dracut -f --kver "<kernel_version>":
 
+    modir -p/lib/firmware/3.10.0-862.9.1/
     touch /lib/firmware/3.10.0-862.9.1/force-early-intel
     dracut -f --kver 3.10.0-862.9.1
 
@@ -43,9 +45,8 @@ directory and run dracut -f --kver "<kernel_version>":
     touch /etc/microcode_ctl/ucode_with_caveats/force-early-intel
     dracut -f --regenerate-all
 
-In order to override the late load behaviour, the "early" part of file names
-should be replaced with "late" (and there is no need to call dracut
-in that case).
+In order to override late load behaviour, the "early" part of file names should
+be replaced with "late" (and there is no need to call dracut in that case).
 
 
 Please refer to /usr/share/doc/microcode_ctl/README.caveats for additional
